@@ -2,6 +2,24 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+// ── Shared colour palette (mirrors ContractorDashboard) ──────────────────────
+class AppColors {
+  static const primaryBlue = Color(0xFF2563EB);
+  static const lightBlue = Color(0xFFEFF6FF);
+  static const mediumBlue = Color(0xFFBFDBFE);
+  static const darkBlue = Color(0xFF1E40AF);
+  static const successGreen = Color(0xFF10B981);
+  static const lightGreen = Color(0xFFECFDF5);
+  static const warningOrange = Color(0xFFF59E0B);
+  static const neutralGray = Color(0xFF6B7280);
+  static const lightGray = Color(0xFFF9FAFB);
+  static const borderGray = Color(0xFFE5E7EB);
+  static const textPrimary = Color(0xFF111827);
+  static const textSecondary = Color(0xFF6B7280);
+  static const textTertiary = Color(0xFF9CA3AF);
+  static const unpaidRed = Color(0xFFEF4444);
+}
+
 class ProfileManagementScreen extends StatefulWidget {
   const ProfileManagementScreen({super.key});
 
@@ -14,6 +32,7 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen> {
   bool _isEditing = false;
   final _formKey = GlobalKey<FormState>();
   bool _isSaving = false;
+  bool _isLoading = true;
 
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
@@ -26,87 +45,139 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen> {
     _loadUserData();
   }
 
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadUserData() async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     final doc =
-        await FirebaseFirestore.instance.collection("users").doc(uid).get();
+        await FirebaseFirestore.instance.collection('users').doc(uid).get();
     final data = doc.data();
-
     if (data != null) {
       setState(() {
-        _nameController.text = data['name'] ?? "";
-        _phoneController.text = data['phone'] ?? "";
+        _nameController.text = data['name'] ?? '';
+        _phoneController.text = data['phone'] ?? '';
         _email = data['email'] ?? FirebaseAuth.instance.currentUser?.email;
         _profileImageUrl = data['profileImageUrl'];
+        _isLoading = false;
       });
+    } else {
+      setState(() => _isLoading = false);
     }
   }
 
   Future<void> _updateProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Confirm dialog — styled to match dashboard logout dialog
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.info_outline, color: Colors.blue),
-            SizedBox(width: 8),
-            Text("Confirm Update"),
-          ],
+      builder: (context) => Dialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: const BoxDecoration(
+                    color: AppColors.lightBlue, shape: BoxShape.circle),
+                child: const Icon(Icons.edit_rounded,
+                    color: AppColors.primaryBlue, size: 30),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Save Changes?',
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                    letterSpacing: -0.5),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Are you sure you want to update your profile information?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                    height: 1.5),
+              ),
+              const SizedBox(height: 28),
+              Row(children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        side:
+                            const BorderSide(color: AppColors.borderGray),
+                        foregroundColor: AppColors.textSecondary),
+                    child: const Text('Cancel',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        backgroundColor: AppColors.primaryBlue,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12))),
+                    child: const Text('Update',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              ]),
+            ],
+          ),
         ),
-        content: const Text("Are you sure you want to update your profile?"),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.primary,
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("Update", style: TextStyle(color: Colors.white)),
-          ),
-        ],
       ),
     );
 
     if (confirm != true) return;
 
-    setState(() {
-      _isSaving = true;
-    });
+    setState(() => _isSaving = true);
 
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
-      await FirebaseFirestore.instance.collection("users").doc(uid).update({
-        "name": _nameController.text.trim(),
-        "phone": _phoneController.text.trim(),
-        "updatedAt": FieldValue.serverTimestamp(),
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'name': _nameController.text.trim(),
+        'phone': _phoneController.text.trim(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
+      setState(() => _isEditing = false);
 
-      setState(() {
-        _isEditing = false;
-      });
-
-      // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                const Text("Profile updated successfully!"),
-              ],
-            ),
-            backgroundColor: Colors.green,
+            content: const Row(children: [
+              Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+              SizedBox(width: 8),
+              Text('Profile updated successfully!',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+            ]),
+            backgroundColor: AppColors.successGreen,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -114,361 +185,482 @@ class _ProfileManagementScreenState extends State<ProfileManagementScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Text("Error: ${e.toString()}"),
-              ],
-            ),
-            backgroundColor: Colors.red,
+            content: Row(children: [
+              const Icon(Icons.error_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Error: $e')),
+            ]),
+            backgroundColor: AppColors.unpaidRed,
             behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
           ),
         );
       }
     } finally {
-      setState(() {
-        _isSaving = false;
-      });
+      setState(() => _isSaving = false);
     }
   }
 
-  Widget _buildProfileHeader() {
-    return Column(
-      children: [
-        Container(
-          width: 120,
-          height: 120,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-            border: Border.all(
-              color: Theme.of(context).colorScheme.primary,
-              width: 3,
-            ),
-          ),
-          child: _profileImageUrl != null && _profileImageUrl!.isNotEmpty
-              ? ClipRRect(
-                  borderRadius: BorderRadius.circular(60),
-                  child: Image.network(
-                    _profileImageUrl!,
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  /// Avatar circle at the top of the screen
+  Widget _buildAvatar() {
+    final name = _nameController.text;
+    final initials = name.isNotEmpty
+        ? name.trim().split(' ').map((w) => w.isNotEmpty ? w[0] : '').take(2).join().toUpperCase()
+        : '?';
+
+    return Stack(alignment: Alignment.center, children: [
+      Container(
+        width: 96,
+        height: 96,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppColors.lightBlue,
+          border: Border.all(color: AppColors.mediumBlue, width: 3),
+        ),
+        child: _profileImageUrl != null && _profileImageUrl!.isNotEmpty
+            ? ClipOval(
+                child: Image.network(_profileImageUrl!,
                     fit: BoxFit.cover,
-                  ),
-                )
-              : Icon(
-                  Icons.person,
-                  size: 60,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                    errorBuilder: (_, __, ___) => Center(
+                          child: Text(initials,
+                              style: const TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primaryBlue)),
+                        )))
+            : Center(
+                child: Text(initials,
+                    style: const TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primaryBlue))),
+      ),
+    ]);
+  }
+
+  /// Read-only info row card (view mode)
+  Widget _infoCard(
+      {required String label,
+      required String value,
+      required IconData icon,
+      bool readOnly = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.borderGray),
+      ),
+      child: Row(children: [
+        Container(
+          padding: const EdgeInsets.all(9),
+          decoration: BoxDecoration(
+              color: readOnly ? AppColors.lightGray : AppColors.lightBlue,
+              borderRadius: BorderRadius.circular(10)),
+          child: Icon(icon,
+              size: 18,
+              color: readOnly
+                  ? AppColors.textTertiary
+                  : AppColors.primaryBlue),
         ),
-        const SizedBox(height: 16),
-        Text(
-          _nameController.text.isNotEmpty ? _nameController.text : "User",
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        if (_email != null)
-          Text(
-            _email!,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[600],
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textTertiary,
+                    letterSpacing: 0.3)),
+            const SizedBox(height: 3),
+            Text(
+              value.isNotEmpty ? value : 'Not set',
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: value.isNotEmpty
+                      ? AppColors.textPrimary
+                      : AppColors.textTertiary),
             ),
+          ]),
+        ),
+        if (readOnly)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+                color: AppColors.lightGray,
+                borderRadius: BorderRadius.circular(6)),
+            child: const Text('Locked',
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textTertiary)),
           ),
-      ],
+      ]),
     );
   }
 
-  Widget _infoCard(String title, String value, IconData icon) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: Theme.of(context).colorScheme.primary),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    value.isNotEmpty ? value : "Not set",
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+  /// Styled text field for edit mode
+  Widget _buildField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    bool readOnly = false,
+    TextInputType keyboardType = TextInputType.text,
+    String? Function(String?)? validator,
+    int maxLines = 1,
+  }) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label,
+          style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary)),
+      const SizedBox(height: 8),
+      TextFormField(
+        controller: controller,
+        readOnly: readOnly,
+        keyboardType: keyboardType,
+        maxLines: maxLines,
+        validator: validator,
+        style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+            color: readOnly ? AppColors.textTertiary : AppColors.textPrimary),
+        decoration: InputDecoration(
+          prefixIcon: Icon(icon,
+              size: 18,
+              color: readOnly
+                  ? AppColors.textTertiary
+                  : AppColors.primaryBlue),
+          filled: true,
+          fillColor: readOnly ? AppColors.lightGray : Colors.white,
+          hintText: readOnly ? 'Cannot be changed' : null,
+          hintStyle: const TextStyle(
+              color: AppColors.textTertiary, fontSize: 14),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.borderGray)),
+          focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                  color: AppColors.primaryBlue, width: 1.5)),
+          errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.unpaidRed)),
+          focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                  color: AppColors.unpaidRed, width: 1.5)),
+          disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.borderGray)),
         ),
       ),
-    );
+    ]);
   }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          "Profile Management",
-          style: TextStyle(fontWeight: FontWeight.w600),
-        ),
-        centerTitle: true,
-        backgroundColor: colorScheme.primary,
-        foregroundColor: colorScheme.onPrimary,
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Profile Header
-            _buildProfileHeader(),
-            const SizedBox(height: 32),
-
-            if (_isEditing)
-              // Edit Form
-              Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    Card(
-                      elevation: 3,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          children: [
-                            TextFormField(
-                              controller: _nameController,
-                              decoration: InputDecoration(
-                                labelText: "Full Name",
-                                prefixIcon: const Icon(Icons.person),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                              validator: (value) =>
-                                  value == null || value.isEmpty
-                                      ? "Please enter your name"
-                                      : null,
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              initialValue: _email,
-                              readOnly: true,
-                              decoration: InputDecoration(
-                                labelText: "Email Address",
-                                prefixIcon: const Icon(Icons.email),
-                                filled: true,
-                                fillColor: Colors.grey[100],
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _phoneController,
-                              decoration: InputDecoration(
-                                labelText: "Phone Number",
-                                prefixIcon: const Icon(Icons.phone),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                hintText: "+1 234 567 8900",
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return "Please enter phone number";
-                                }
-                                return null;
-                              },
-                              keyboardType: TextInputType.phone,
-                            ),
-                          ],
-                        ),
-                      ),
+      backgroundColor: Colors.white,
+      // ── AppBar — white with bottom border (same as dashboard) ──
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(68),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(
+                bottom: BorderSide(color: AppColors.borderGray, width: 1)),
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              child: Row(children: [
+                // Back button
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                        color: AppColors.lightGray,
+                        borderRadius: BorderRadius.circular(12)),
+                    child: const Icon(Icons.arrow_back_rounded,
+                        size: 20, color: AppColors.textSecondary),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                const Expanded(
+                  child: Text(
+                    'Profile',
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                        letterSpacing: -0.5),
+                  ),
+                ),
+                // Edit toggle (view mode only)
+                if (!_isEditing && !_isLoading)
+                  GestureDetector(
+                    onTap: () => setState(() => _isEditing = true),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                          color: AppColors.lightBlue,
+                          borderRadius: BorderRadius.circular(12)),
+                      child: const Icon(Icons.edit_rounded,
+                          size: 18, color: AppColors.primaryBlue),
                     ),
-                    const SizedBox(height: 24),
-
-                    // Action Buttons
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _isSaving
-                                ? null
-                                : () {
-                                    setState(() {
-                                      _isEditing = false;
-                                    });
-                                  },
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.cancel_outlined),
-                                SizedBox(width: 8),
-                                Text(
-                                  "Cancel",
-                                  style: TextStyle(fontSize: 16),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: _isSaving ? null : _updateProfile,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: colorScheme.primary,
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: _isSaving
-                                ? const SizedBox(
-                                    height: 24,
-                                    width: 24,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                          Colors.white),
-                                    ),
-                                  )
-                                : Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      const Icon(Icons.save, color: Colors.white),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        "Save Changes",
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: colorScheme.onPrimary,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                          ),
-                        ),
-                      ],
+                  ),
+              ]),
+            ),
+          ),
+        ),
+      ),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                  color: AppColors.primaryBlue, strokeWidth: 3))
+          : SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 32, 20, 40),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ── Avatar + name ──
+                  Center(child: _buildAvatar()),
+                  const SizedBox(height: 16),
+                  Center(
+                    child: Text(
+                      _nameController.text.isNotEmpty
+                          ? _nameController.text
+                          : 'Your Name',
+                      style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                          letterSpacing: -0.5),
+                    ),
+                  ),
+                  if (_email != null) ...[
+                    const SizedBox(height: 4),
+                    Center(
+                      child: Text(_email!,
+                          style: const TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary)),
                     ),
                   ],
-                ),
-              )
-            else
-              // View Mode
-              Column(
-                children: [
-                  _infoCard("Full Name", _nameController.text, Icons.person),
-                  _infoCard("Email Address", _email ?? "", Icons.email),
-                  _infoCard(
-                      "Phone Number", _phoneController.text, Icons.phone),
-                  const SizedBox(height: 32),
 
-                  // Edit Button
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _isEditing = true;
-                      });
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: colorScheme.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 2,
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.edit, color: Colors.white),
-                        SizedBox(width: 12),
-                        Text(
-                          "Edit Profile",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
+                  const SizedBox(height: 36),
+
+                  if (_isEditing) ...[
+                    // ── Section header ──
+                    _buildSectionHeader('Edit Information',
+                        icon: Icons.edit_note_rounded,
+                        iconColor: AppColors.primaryBlue),
+                    const SizedBox(height: 20),
+
+                    // ── Edit form ──
+                    Form(
+                      key: _formKey,
+                      child: Column(children: [
+                        _buildField(
+                          controller: _nameController,
+                          label: 'Full Name',
+                          icon: Icons.person_rounded,
+                          validator: (v) => v == null || v.isEmpty
+                              ? 'Please enter your name'
+                              : null,
                         ),
-                      ],
+                        const SizedBox(height: 16),
+                        _buildField(
+                          controller:
+                              TextEditingController(text: _email ?? ''),
+                          label: 'Email Address',
+                          icon: Icons.email_rounded,
+                          readOnly: true,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildField(
+                          controller: _phoneController,
+                          label: 'Phone Number',
+                          icon: Icons.phone_rounded,
+                          keyboardType: TextInputType.phone,
+                          validator: (v) => v == null || v.isEmpty
+                              ? 'Please enter phone number'
+                              : null,
+                        ),
+                      ]),
                     ),
-                  ),
 
-                  // Optional: Additional information
-                  const SizedBox(height: 24),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blue[100]!),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.blue[700]),
-                        const SizedBox(width: 12),
+                    const SizedBox(height: 12),
+
+                    // Email notice
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                          color: AppColors.lightBlue,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: AppColors.mediumBlue)),
+                      child: const Row(children: [
+                        Icon(Icons.lock_rounded,
+                            size: 15, color: AppColors.primaryBlue),
+                        SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            "Your email cannot be changed for security reasons.",
+                            'Your email cannot be changed for security reasons.',
                             style: TextStyle(
-                              color: Colors.blue[800],
-                              fontSize: 14,
-                            ),
+                                fontSize: 12,
+                                color: AppColors.primaryBlue,
+                                height: 1.4),
                           ),
                         ),
-                      ],
+                      ]),
                     ),
-                  ),
+
+                    const SizedBox(height: 28),
+
+                    // ── Action buttons ──
+                    Row(children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _isSaving
+                              ? null
+                              : () => setState(() => _isEditing = false),
+                          style: OutlinedButton.styleFrom(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 15),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                              side: const BorderSide(
+                                  color: AppColors.borderGray),
+                              foregroundColor: AppColors.textSecondary),
+                          child: const Text('Cancel',
+                              style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _isSaving ? null : _updateProfile,
+                          style: ElevatedButton.styleFrom(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 15),
+                              backgroundColor: AppColors.primaryBlue,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius:
+                                      BorderRadius.circular(14))),
+                          child: _isSaving
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white))
+                              : const Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.check_rounded, size: 18),
+                                    SizedBox(width: 6),
+                                    Text('Save Changes',
+                                        style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight:
+                                                FontWeight.w600)),
+                                  ],
+                                ),
+                        ),
+                      ),
+                    ]),
+                  ] else ...[
+                    // ── View mode ──
+                    _buildSectionHeader('Personal Information',
+                        icon: Icons.badge_rounded,
+                        iconColor: AppColors.primaryBlue),
+                    const SizedBox(height: 16),
+                    _infoCard(
+                        label: 'Full Name',
+                        value: _nameController.text,
+                        icon: Icons.person_rounded),
+                    const SizedBox(height: 10),
+                    _infoCard(
+                        label: 'Email Address',
+                        value: _email ?? '',
+                        icon: Icons.email_rounded,
+                        readOnly: true),
+                    const SizedBox(height: 10),
+                    _infoCard(
+                        label: 'Phone Number',
+                        value: _phoneController.text,
+                        icon: Icons.phone_rounded),
+
+                    const SizedBox(height: 32),
+
+                    // Edit button
+                    ElevatedButton(
+                      onPressed: () => setState(() => _isEditing = true),
+                      style: ElevatedButton.styleFrom(
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 16),
+                          backgroundColor: AppColors.primaryBlue,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14))),
+                      child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.edit_rounded, size: 18),
+                            SizedBox(width: 8),
+                            Text('Edit Profile',
+                                style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600)),
+                          ]),
+                    ),
+                  ],
                 ],
               ),
-          ],
-        ),
-      ),
+            ),
     );
+  }
+
+  Widget _buildSectionHeader(String title,
+      {required IconData icon, required Color iconColor}) {
+    return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+      Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+            color: iconColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10)),
+        child: Icon(icon, size: 18, color: iconColor),
+      ),
+      const SizedBox(width: 12),
+      Text(title,
+          style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+              letterSpacing: -0.4)),
+    ]);
   }
 }

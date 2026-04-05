@@ -3,6 +3,22 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:track_site_pro_app/screens/expenses/AddExpenseScreen.dart';
 
+// ── Shared colour palette ────────────────────────────────────────────────────
+class AppColors {
+  static const primaryBlue = Color(0xFF2563EB);
+  static const lightBlue = Color(0xFFEFF6FF);
+  static const mediumBlue = Color(0xFFBFDBFE);
+  static const successGreen = Color(0xFF10B981);
+  static const lightGreen = Color(0xFFECFDF5);
+  static const warningOrange = Color(0xFFF59E0B);
+  static const lightGray = Color(0xFFF9FAFB);
+  static const borderGray = Color(0xFFE5E7EB);
+  static const textPrimary = Color(0xFF111827);
+  static const textSecondary = Color(0xFF6B7280);
+  static const textTertiary = Color(0xFF9CA3AF);
+  static const unpaidRed = Color(0xFFEF4444);
+}
+
 class ExpenseHistoryScreen extends StatefulWidget {
   final String projectId;
   final String projectTitle;
@@ -18,62 +34,128 @@ class ExpenseHistoryScreen extends StatefulWidget {
 }
 
 class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
-  double _totalExpenses = 0.0;
-
-  Future<void> _deleteExpense(BuildContext context, String expenseId) async {
+  // ── Delete ─────────────────────────────────────────────────────────────────
+  Future<void> _deleteExpense(String expenseId) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Delete Expense"),
-        content: const Text("Are you sure you want to delete this expense?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text("Cancel"),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Delete", style: TextStyle(color: Colors.red)),
-          ),
-        ],
+      builder: (ctx) => Dialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                  color: const Color(0xFFFEF2F2), shape: BoxShape.circle),
+              child: const Icon(Icons.delete_rounded,
+                  color: AppColors.unpaidRed, size: 30),
+            ),
+            const SizedBox(height: 20),
+            const Text('Delete Expense',
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                    letterSpacing: -0.5)),
+            const SizedBox(height: 12),
+            const Text(
+              'Are you sure you want to delete this expense? This action cannot be undone.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                  height: 1.5),
+            ),
+            const SizedBox(height: 28),
+            Row(children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      side:
+                          const BorderSide(color: AppColors.borderGray),
+                      foregroundColor: AppColors.textSecondary),
+                  child: const Text('Cancel',
+                      style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      backgroundColor: AppColors.unpaidRed,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12))),
+                  child: const Text('Delete',
+                      style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ]),
+          ]),
+        ),
       ),
     );
 
-    if (confirmed == true) {
-      try {
-        await FirebaseFirestore.instance
-            .collection("projects")
-            .doc(widget.projectId)
-            .collection("expenses")
-            .doc(expenseId)
-            .delete();
+    if (confirmed != true) return;
 
-        // Refresh the list
-        setState(() {});
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Expense deleted successfully"),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Failed to delete expense: $e"),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+    try {
+      await FirebaseFirestore.instance
+          .collection('projects')
+          .doc(widget.projectId)
+          .collection('expenses')
+          .doc(expenseId)
+          .delete();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(children: [
+              Icon(Icons.check_circle_rounded,
+                  color: Colors.white, size: 18),
+              SizedBox(width: 8),
+              Text('Expense deleted',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+            ]),
+            backgroundColor: AppColors.successGreen,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete: $e'),
+            backgroundColor: AppColors.unpaidRed,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
+          ),
+        );
       }
     }
   }
 
-  Future<void> _editExpense(BuildContext context, String expenseId, Map<String, dynamic> data) async {
-    final result = await Navigator.push(
+  // ── Edit ───────────────────────────────────────────────────────────────────
+  Future<void> _editExpense(
+      String expenseId, Map<String, dynamic> data) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => AddExpenseScreen(
@@ -84,230 +166,363 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
         ),
       ),
     );
-
-    if (result == true && mounted) {
-      setState(() {}); // Refresh the list
-    }
   }
 
-  Widget _buildCategoryChip(String category, ColorScheme colors) {
-    Color chipColor;
-    IconData icon;
-    
-    switch (category.toLowerCase()) {
-      case 'labour':
-        chipColor = Colors.blue.withOpacity(0.1);
-        icon = Icons.people_outline;
-        break;
-      case 'material':
-        chipColor = Colors.green.withOpacity(0.1);
-        icon = Icons.inventory_2_outlined;
-        break;
-      case 'transport':
-        chipColor = Colors.orange.withOpacity(0.1);
-        icon = Icons.local_shipping_outlined;
-        break;
-      case 'equipment':
-        chipColor = Colors.purple.withOpacity(0.1);
-        icon = Icons.build_outlined;
-        break;
-      default:
-        chipColor = colors.surfaceVariant;
-        icon = Icons.receipt_long_outlined;
-    }
-
-    return Chip(
-      label: Text(category),
-      avatar: Icon(icon, size: 16),
-      backgroundColor: chipColor,
-      labelStyle: TextStyle(
-        fontSize: 12,
-        color: colors.onSurface,
-        fontWeight: FontWeight.w500,
-      ),
-      visualDensity: VisualDensity.compact,
-    );
-  }
-
-  Widget _buildExpenseCard(DocumentSnapshot exp, ColorScheme colors) {
+  // ── Expense card ───────────────────────────────────────────────────────────
+  Widget _buildExpenseCard(DocumentSnapshot exp) {
     final data = exp.data() as Map<String, dynamic>;
     final amount = (data['amount'] ?? 0).toDouble();
     final description = data['description'] ?? 'No description';
-    final category = data['category']?.toString() ?? 'Other';
     final date = (data['date'] as Timestamp).toDate();
-    final formattedDate = DateFormat('dd-MMM-yyyy').format(date);
+    final formattedDate = DateFormat('dd MMM yyyy').format(date);
     final formattedTime = DateFormat('hh:mm a').format(date);
-    final submittedBy = data['submittedBy']?.toString() ?? 'Unknown';
+    final submittedBy =
+        (data['submittedBy']?.toString() ?? 'Unknown').split('@')[0];
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.borderGray),
       ),
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: colors.primary.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          childrenPadding: EdgeInsets.zero,
+          // Leading icon
+          leading: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+                color: AppColors.lightBlue,
+                borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.receipt_long_rounded,
+                color: AppColors.primaryBlue, size: 20),
           ),
-          child: Icon(
-            Icons.receipt_long,
-            color: colors.primary,
-            size: 24,
+          // Description
+          title: Text(
+            description,
+            style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-        ),
-        title: Text(
-          description,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Text(formattedDate,
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary)),
           ),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          // Amount
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                'PKR ${_fmt(amount)}',
+                style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryBlue),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'by $submittedBy',
+                style: const TextStyle(
+                    fontSize: 10, color: AppColors.textTertiary),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+          // Expanded details
           children: [
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Text(
-                  formattedDate,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colors.onSurfaceVariant,
-                  ),
+            Container(
+              margin:
+                  const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                  color: AppColors.lightGray,
+                  borderRadius: BorderRadius.circular(12)),
+              child: Column(children: [
+                _detailRow(
+                    icon: Icons.description_rounded,
+                    label: 'Description',
+                    value: description),
+                const SizedBox(height: 10),
+                _detailRow(
+                    icon: Icons.calendar_today_rounded,
+                    label: 'Date',
+                    value: formattedDate),
+                const SizedBox(height: 10),
+                _detailRow(
+                    icon: Icons.access_time_rounded,
+                    label: 'Time',
+                    value: formattedTime),
+                const SizedBox(height: 10),
+                _detailRow(
+                    icon: Icons.person_rounded,
+                    label: 'Submitted by',
+                    value: submittedBy),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Divider(height: 1, color: AppColors.borderGray),
                 ),
-                const SizedBox(width: 8),
-                _buildCategoryChip(category, colors),
-              ],
+                // Actions row
+                Row(children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _deleteExpense(exp.id),
+                      style: OutlinedButton.styleFrom(
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 10),
+                          foregroundColor: AppColors.unpaidRed,
+                          side: const BorderSide(
+                              color: Color(0xFFFECACA)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10))),
+                      child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.delete_rounded, size: 15),
+                            SizedBox(width: 5),
+                            Text('Delete',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600)),
+                          ]),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => _editExpense(exp.id, data),
+                      style: ElevatedButton.styleFrom(
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 10),
+                          backgroundColor: AppColors.primaryBlue,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10))),
+                      child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.edit_rounded, size: 15),
+                            SizedBox(width: 5),
+                            Text('Edit',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600)),
+                          ]),
+                    ),
+                  ),
+                ]),
+              ]),
             ),
           ],
         ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              "PKR ${amount.toStringAsFixed(2)}",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 15,
-                color: colors.primary,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              "by ${submittedBy.split('@')[0]}",
-              style: TextStyle(
-                fontSize: 10,
-                color: colors.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Divider(),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "Details",
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: colors.onSurfaceVariant,
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: Icon(Icons.edit, color: colors.primary, size: 20),
-                          onPressed: () => _editExpense(context, exp.id, data),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: Icon(Icons.delete, color: Colors.red, size: 20),
-                          onPressed: () => _deleteExpense(context, exp.id),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _DetailItem(
-                        icon: Icons.category_outlined,
-                        label: 'Category',
-                        value: category,
-                        colors: colors,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _DetailItem(
-                        icon: Icons.access_time_outlined,
-                        label: 'Time',
-                        value: formattedTime,
-                        colors: colors,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                if (data['remarks'] != null && data['remarks'].toString().isNotEmpty)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Remarks",
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colors.onSurfaceVariant,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        data['remarks'].toString(),
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: colors.onSurface,
-                        ),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
 
+  Widget _detailRow(
+      {required IconData icon,
+      required String label,
+      required String value}) {
+    return Row(children: [
+      Icon(icon, size: 14, color: AppColors.textTertiary),
+      const SizedBox(width: 8),
+      Text('$label: ',
+          style: const TextStyle(
+              fontSize: 12, color: AppColors.textSecondary)),
+      Expanded(
+        child: Text(value,
+            style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary),
+            overflow: TextOverflow.ellipsis),
+      ),
+    ]);
+  }
+
+  // ── Summary header ─────────────────────────────────────────────────────────
+  Widget _buildSummaryHeader(
+      {required int count, required double total}) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.borderGray),
+      ),
+      child: Row(children: [
+        Expanded(
+          child: _summaryCell(
+            label: 'Total Expenses',
+            value: 'PKR ${_fmt(total)}',
+            icon: Icons.account_balance_wallet_rounded,
+            color: AppColors.primaryBlue,
+            bgColor: AppColors.lightBlue,
+          ),
+        ),
+        Container(
+          width: 1,
+          height: 48,
+          color: AppColors.borderGray,
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+        ),
+        Expanded(
+          child: _summaryCell(
+            label: 'Entries',
+            value: '$count expense${count != 1 ? 's' : ''}',
+            icon: Icons.receipt_long_rounded,
+            color: AppColors.warningOrange,
+            bgColor: const Color(0xFFFFFBEB),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _summaryCell({
+    required String label,
+    required String value,
+    required IconData icon,
+    required Color color,
+    required Color bgColor,
+  }) {
+    return Row(children: [
+      Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+            color: bgColor, borderRadius: BorderRadius.circular(10)),
+        child: Icon(icon, size: 18, color: color),
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 11, color: AppColors.textSecondary)),
+          const SizedBox(height: 2),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: color),
+              overflow: TextOverflow.ellipsis),
+        ]),
+      ),
+    ]);
+  }
+
+  // ── Empty state ────────────────────────────────────────────────────────────
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(
+            width: 100,
+            height: 100,
+            decoration: const BoxDecoration(
+                color: AppColors.lightGray, shape: BoxShape.circle),
+            child: const Icon(Icons.receipt_long_rounded,
+                size: 46, color: AppColors.textTertiary),
+          ),
+          const SizedBox(height: 24),
+          const Text('No Expenses Yet',
+              style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                  letterSpacing: -0.5)),
+          const SizedBox(height: 10),
+          const Text('Tap the button below to record your first expense.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                  height: 1.5)),
+        ]),
+      ),
+    );
+  }
+
+  /// Formats a number with comma separators and no abbreviations.
+  /// e.g. 1500000 → "1,500,000"   |   2450.5 → "2,451"
+  String _fmt(double amount) {
+    if (amount == amount.truncateToDouble()) {
+      return _addCommas(amount.toInt().toString());
+    }
+    final formatted = amount.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
+    final parts = formatted.split('.');
+    return '${_addCommas(parts[0])}${parts.length > 1 ? '.${parts[1]}' : ''}';
+  }
+
+  String _addCommas(String intStr) {
+    final buffer = StringBuffer();
+    final n = intStr.length;
+    for (int i = 0; i < n; i++) {
+      if (i > 0 && (n - i) % 3 == 0) buffer.write(',');
+      buffer.write(intStr[i]);
+    }
+    return buffer.toString();
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text("Expenses - ${widget.projectTitle}"),
-        backgroundColor: colorScheme.primary,
-        foregroundColor: colorScheme.onPrimary,
+      backgroundColor: AppColors.lightGray,
+      // ── AppBar ──
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(68),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(
+                bottom: BorderSide(color: AppColors.borderGray, width: 1)),
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 20, vertical: 14),
+              child: Row(children: [
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                        color: AppColors.lightGray,
+                        borderRadius: BorderRadius.circular(12)),
+                    child: const Icon(Icons.arrow_back_rounded,
+                        size: 20, color: AppColors.textSecondary),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    'Expenses',
+                    style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                        letterSpacing: -0.5),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ),
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
@@ -318,137 +533,86 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+                child: CircularProgressIndicator(
+                    color: AppColors.primaryBlue, strokeWidth: 3));
           }
-
           if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
+            return Center(
+                child: Text('Error: ${snapshot.error}',
+                    style: const TextStyle(
+                        color: AppColors.unpaidRed)));
           }
 
           final expenses = snapshot.data!.docs;
 
           if (expenses.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.receipt_long_outlined,
-                    size: 80,
-                    color: colorScheme.onSurface.withOpacity(0.3),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    "No expenses recorded yet",
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "Add your first expense by tapping the + button",
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            );
+            return _buildEmptyState();
           }
 
-          // Calculate total expenses
           double total = 0;
           for (var e in expenses) {
-            total += ((e.data() as Map<String, dynamic>)['amount'] ?? 0).toDouble();
+            total += ((e.data() as Map<String, dynamic>)['amount'] ?? 0)
+                .toDouble();
           }
-          _totalExpenses = total;
 
-          return Column(
-            children: [
-              // Total Expenses Summary
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceVariant,
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(20),
-                    bottomRight: Radius.circular(20),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "Total Expenses",
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                            Text(
-                              "PKR ${_totalExpenses.toStringAsFixed(2)}",
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: colorScheme.primary,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: colorScheme.primary.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            "${expenses.length} expense${expenses.length != 1 ? 's' : ''}",
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: colorScheme.primary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                  ],
+          return CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
+              // Summary header
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 16, 0, 4),
+                  child:
+                      _buildSummaryHeader(count: expenses.length, total: total),
                 ),
               ),
 
-              // Expenses List
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  itemCount: expenses.length,
-                  itemBuilder: (context, index) {
-                    return _buildExpenseCard(expenses[index], colorScheme);
-                  },
+              // Section label
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                  child: Row(children: [
+                    Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                          color: AppColors.warningOrange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8)),
+                      child: const Icon(Icons.receipt_long_rounded,
+                          size: 15, color: AppColors.warningOrange),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text('All Expenses',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                            letterSpacing: -0.4)),
+                  ]),
+                ),
+              ),
+
+              // List
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) =>
+                        _buildExpenseCard(expenses[index]),
+                    childCount: expenses.length,
+                  ),
                 ),
               ),
             ],
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final result = await Navigator.push(
+
+      // ── FAB ──
+      floatingActionButton: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: FloatingActionButton.extended(
+          onPressed: () => Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => AddExpenseScreen(
@@ -456,63 +620,19 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
                 projectTitle: widget.projectTitle,
               ),
             ),
-          );
-
-          if (result == true && mounted) {
-            setState(() {}); // Refresh the list
-          }
-        },
-        backgroundColor: colorScheme.primary,
-        foregroundColor: colorScheme.onPrimary,
-        icon: const Icon(Icons.add),
-        label: const Text("Add Expense"),
+          ),
+          backgroundColor: AppColors.primaryBlue,
+          foregroundColor: Colors.white,
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+          icon: const Icon(Icons.add_rounded, size: 20),
+          label: const Text('Add Expense',
+              style: TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w600)),
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-    );
-  }
-}
-
-class _DetailItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final ColorScheme colors;
-
-  const _DetailItem({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.colors,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 14, color: colors.onSurfaceVariant),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                color: colors.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: colors.onSurface,
-          ),
-        ),
-      ],
     );
   }
 }

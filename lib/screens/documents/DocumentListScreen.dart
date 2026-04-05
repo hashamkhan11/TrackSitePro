@@ -10,6 +10,24 @@ import 'package:path_provider/path_provider.dart';
 import 'package:file_saver/file_saver.dart';
 import 'UploadDocumentScreen.dart';
 
+// ── Design Tokens ─────────────────────────────────────────────────────────────
+class _C {
+  static const primaryBlue   = Color(0xFF2563EB);
+  static const lightBlue     = Color(0xFFEFF6FF);
+  static const mediumBlue    = Color(0xFFBFDBFE);
+  static const lightGray     = Color(0xFFF9FAFB);
+  static const borderGray    = Color(0xFFE5E7EB);
+  static const textPrimary   = Color(0xFF111827);
+  static const textSecondary = Color(0xFF6B7280);
+  static const textTertiary  = Color(0xFF9CA3AF);
+  static const successGreen  = Color(0xFF10B981);
+  static const lightGreen    = Color(0xFFECFDF5);
+  static const warningOrange = Color(0xFFF59E0B);
+  static const lightOrange   = Color(0xFFFEF3C7);
+  static const errorRed      = Color(0xFFEF4444);
+  static const lightRed      = Color(0xFFFEF2F2);
+}
+
 class DocumentListScreen extends StatelessWidget {
   final String projectId;
   final String projectTitle;
@@ -20,11 +38,11 @@ class DocumentListScreen extends StatelessWidget {
     required this.projectTitle,
   });
 
+  // ── File Actions ─────────────────────────────────────────────────────────────
   Future<void> _openDocument(BuildContext context, Map<String, dynamic> data) async {
     try {
       final base64File = data['fileData'];
       if (base64File == null) return;
-
       final bytes = base64Decode(base64File);
 
       if (kIsWeb) {
@@ -33,44 +51,30 @@ class DocumentListScreen extends StatelessWidget {
           bytes: bytes,
           mimeType: MimeType.other,
         );
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("File downloaded (check browser downloads).")),
-        );
+        _snack(context, "File downloaded (check browser downloads).", _C.successGreen);
       } else {
         final dir = await getTemporaryDirectory();
         final filePath = "${dir.path}/${data['fileName'] ?? 'document'}";
         final file = File(filePath);
         await file.writeAsBytes(bytes);
-
         await OpenFilex.open(file.path);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to open file: $e")),
-      );
+      _snack(context, "Failed to open file: $e", _C.errorRed);
     }
   }
 
   Future<void> _downloadDocument(BuildContext context, Map<String, dynamic> data) async {
     try {
-      final base64File = data['fileData'];
-      if (base64File == null) return;
-
-      final bytes = base64Decode(base64File);
-
+      final bytes = base64Decode(data['fileData']);
       await FileSaver.instance.saveFile(
         name: data['fileName'] ?? "document",
         bytes: bytes,
         mimeType: MimeType.other,
       );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("File saved successfully.")),
-      );
+      _snack(context, "File saved successfully.", _C.successGreen);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Download failed: $e")),
-      );
+      _snack(context, "Download failed: $e", _C.errorRed);
     }
   }
 
@@ -79,19 +83,42 @@ class DocumentListScreen extends StatelessWidget {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text("Delete Document"),
-        content: Text("Are you sure you want to delete '$fileName'?"),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+        title: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: _C.lightRed,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.delete_outline_rounded,
+                color: _C.errorRed, size: 20),
+          ),
+          const SizedBox(width: 12),
+          const Text("Delete Document",
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700,
+                  color: _C.textPrimary)),
+        ]),
+        content: Text(
+          "Are you sure you want to delete '$fileName'? This cannot be undone.",
+          style: const TextStyle(fontSize: 14, color: _C.textSecondary, height: 1.5),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
+            style: TextButton.styleFrom(foregroundColor: _C.textSecondary),
             child: const Text("Cancel"),
           ),
-          TextButton(
+          ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              "Delete",
-              style: TextStyle(color: Colors.red),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _C.errorRed,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
+            child: const Text("Delete", style: TextStyle(fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -100,23 +127,13 @@ class DocumentListScreen extends StatelessWidget {
     if (confirm == true) {
       try {
         await FirebaseFirestore.instance
-            .collection('projects')
-            .doc(projectId)
-            .collection('documents')
-            .doc(docId)
-            .delete();
-
+            .collection('projects').doc(projectId)
+            .collection('documents').doc(docId).delete();
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("'$fileName' deleted successfully.")),
-          );
+          _snack(context, "'$fileName' deleted.", _C.successGreen);
         }
       } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Delete failed: $e")),
-          );
-        }
+        if (context.mounted) _snack(context, "Delete failed: $e", _C.errorRed);
       }
     }
   }
@@ -125,451 +142,394 @@ class DocumentListScreen extends StatelessWidget {
     try {
       final base64File = data['fileData'];
       if (base64File == null) return;
-
       final fileName = data['fileName']?.toString().toLowerCase() ?? '';
-      final isImage = fileName.endsWith('.jpg') || 
-                      fileName.endsWith('.jpeg') || 
-                      fileName.endsWith('.png');
-
+      final isImage = fileName.endsWith('.jpg') ||
+          fileName.endsWith('.jpeg') ||
+          fileName.endsWith('.png');
       if (!isImage) return;
 
       showDialog(
         context: context,
-        builder: (context) {
-          return Dialog(
-            backgroundColor: Colors.transparent,
-            insetPadding: const EdgeInsets.all(20),
-            child: GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  color: Theme.of(context).colorScheme.surface,
+        builder: (_) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: const BoxDecoration(
+                  color: _C.lightGray,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  border: Border(bottom: BorderSide(color: _C.borderGray)),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AppBar(
-                      backgroundColor: Colors.transparent,
-                      elevation: 0,
-                      automaticallyImplyLeading: false,
-                      title: Text(
-                        data['title'] ?? 'Image Preview',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                      ),
-                      actions: [
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
+                child: Row(children: [
+                  const Icon(Icons.image_outlined, size: 18, color: _C.textSecondary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      data['title'] ?? 'Image Preview',
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600,
+                          color: _C.textPrimary),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
                     ),
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Hero(
-                        tag: 'image_${data['fileName']}',
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.memory(
-                            base64Decode(base64File),
-                            fit: BoxFit.contain,
-                            width: double.infinity,
-                            height: 400,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                width: 300,
-                                height: 300,
-                                color: Colors.grey[200],
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.broken_image,
-                                    size: 60,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: _C.borderGray,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.close_rounded, size: 16,
+                          color: _C.textSecondary),
+                    ),
+                  ),
+                ]),
+              ),
+              // Image
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.memory(
+                    base64Decode(base64File),
+                    fit: BoxFit.contain,
+                    width: double.infinity,
+                    height: 380,
+                    errorBuilder: (_, __, ___) => Container(
+                      height: 200,
+                      color: _C.lightGray,
+                      child: const Center(
+                        child: Icon(Icons.broken_image_rounded,
+                            size: 48, color: _C.textTertiary),
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          );
-        },
+            ]),
+          ),
+        ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to preview image: $e")),
-      );
+      _snack(context, "Failed to preview image: $e", _C.errorRed);
     }
   }
 
-  Widget _getFileIcon(String fileName, ColorScheme colors, bool isExpired) {
-    final fileLower = fileName.toLowerCase();
-    final color = isExpired ? Colors.red : colors.primary;
-
-    if (fileLower.endsWith('.pdf')) {
-      return Icon(Icons.picture_as_pdf, color: color);
-    } else if (fileLower.endsWith('.jpg') || fileLower.endsWith('.jpeg') || fileLower.endsWith('.png')) {
-      return Icon(Icons.image, color: color);
-    } else if (fileLower.endsWith('.doc') || fileLower.endsWith('.docx')) {
-      return Icon(Icons.description, color: color);
-    } else if (fileLower.endsWith('.xls') || fileLower.endsWith('.xlsx')) {
-      return Icon(Icons.table_chart, color: color);
-    } else {
-      return Icon(Icons.insert_drive_file_outlined, color: color);
-    }
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+  void _snack(BuildContext context, String msg, Color bg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w500)),
+      backgroundColor: bg,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.all(16),
+    ));
   }
 
-  Widget _buildDocumentCard(BuildContext context, DocumentSnapshot doc, ColorScheme colors) {
-    final data = doc.data() as Map<String, dynamic>;
-    final expiry = (data['expiryDate'] as Timestamp?)?.toDate();
+  IconData _fileIcon(String fileName) {
+    final f = fileName.toLowerCase();
+    if (f.endsWith('.pdf')) return Icons.picture_as_pdf_rounded;
+    if (f.endsWith('.jpg') || f.endsWith('.jpeg') || f.endsWith('.png')) {
+      return Icons.image_rounded;
+    }
+    if (f.endsWith('.doc') || f.endsWith('.docx')) return Icons.description_rounded;
+    if (f.endsWith('.xls') || f.endsWith('.xlsx')) return Icons.table_chart_rounded;
+    return Icons.insert_drive_file_rounded;
+  }
+
+  Color _fileColor(String fileName, bool isExpired) {
+    if (isExpired) return _C.errorRed;
+    final f = fileName.toLowerCase();
+    if (f.endsWith('.pdf')) return const Color(0xFFDC2626);
+    if (f.endsWith('.jpg') || f.endsWith('.jpeg') || f.endsWith('.png')) {
+      return _C.primaryBlue;
+    }
+    if (f.endsWith('.doc') || f.endsWith('.docx')) return const Color(0xFF2563EB);
+    if (f.endsWith('.xls') || f.endsWith('.xlsx')) return _C.successGreen;
+    return _C.textSecondary;
+  }
+
+  // ── Document Card ─────────────────────────────────────────────────────────────
+  Widget _buildDocumentCard(
+      BuildContext context, DocumentSnapshot doc) {
+    final data       = doc.data() as Map<String, dynamic>;
+    final expiry     = (data['expiryDate'] as Timestamp?)?.toDate();
     final uploadDate = (data['uploadDate'] as Timestamp?)?.toDate();
-    final isExpired = expiry != null && expiry.isBefore(DateTime.now());
-    final fileName = data['fileName']?.toString() ?? '';
-    final isImage = fileName.toLowerCase().endsWith('.jpg') || 
-                    fileName.toLowerCase().endsWith('.jpeg') || 
-                    fileName.toLowerCase().endsWith('.png');
-    final fileSize = data['fileData'] != null 
+    final isExpired  = expiry != null && expiry.isBefore(DateTime.now());
+    final fileName   = data['fileName']?.toString() ?? '';
+    final isImage    = fileName.toLowerCase().endsWith('.jpg') ||
+        fileName.toLowerCase().endsWith('.jpeg') ||
+        fileName.toLowerCase().endsWith('.png');
+    final fileSize = data['fileData'] != null
         ? (base64Decode(data['fileData']).lengthInBytes / 1024).toStringAsFixed(1)
         : '0.0';
+    final fileColor  = _fileColor(fileName, isExpired);
+    final fileBg     = isExpired ? _C.lightRed : _C.lightBlue;
+    final fileBorder = isExpired ? const Color(0xFFFECACA) : _C.mediumBlue;
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+            color: isExpired ? const Color(0xFFFECACA) : _C.borderGray),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.03),
+              blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         onTap: isImage ? () => _showImagePreview(context, data) : null,
         child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Document Icon/Preview
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: isExpired 
-                      ? Colors.red.withOpacity(0.1) 
-                      : colors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isExpired ? Colors.red.withOpacity(0.3) : colors.primary.withOpacity(0.3),
-                  ),
-                ),
-                child: Center(
-                  child: _getFileIcon(fileName, colors, isExpired),
-                ),
+          padding: const EdgeInsets.all(14),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // File icon
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: fileBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: fileBorder),
               ),
-              const SizedBox(width: 12),
+              child: Icon(_fileIcon(fileName), color: fileColor, size: 24),
+            ),
+            const SizedBox(width: 14),
 
-              // Document Details
-              Expanded(
-                child: Column(
+            // Details
+            Expanded(
+              child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            data['title'] ?? 'Untitled',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (isExpired)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              'Expired',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.red,
-                              ),
-                            ),
-                          ),
-                      ],
+                Row(children: [
+                  Expanded(
+                    child: Text(
+                      data['title'] ?? 'Untitled',
+                      style: const TextStyle(fontSize: 14,
+                          fontWeight: FontWeight.w700, color: _C.textPrimary),
+                      maxLines: 2, overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      fileName,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: colors.onSurfaceVariant,
+                  ),
+                  if (isExpired) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _C.lightRed,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFFFECACA)),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 12,
-                      children: [
-                        _buildDetailItem(
-                          icon: Icons.calendar_today,
-                          text: uploadDate != null 
-                              ? "${uploadDate.day}/${uploadDate.month}/${uploadDate.year}"
-                              : "-",
-                          color: colors.onSurfaceVariant,
-                        ),
-                        _buildDetailItem(
-                          icon: Icons.calendar_month,
-                          text: expiry != null 
-                              ? "${expiry.day}/${expiry.month}/${expiry.year}"
-                              : "No expiry",
-                          color: isExpired ? Colors.red : colors.onSurfaceVariant,
-                        ),
-                        _buildDetailItem(
-                          icon: Icons.storage,
-                          text: "$fileSize KB",
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ],
+                      child: const Text('Expired',
+                          style: TextStyle(fontSize: 10,
+                              fontWeight: FontWeight.w700, color: _C.errorRed)),
                     ),
                   ],
-                ),
-              ),
+                ]),
+                const SizedBox(height: 3),
+                Text(fileName,
+                    style: const TextStyle(fontSize: 12, color: _C.textTertiary),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 8),
+                Wrap(spacing: 12, runSpacing: 4, children: [
+                  _metaChip(Icons.upload_rounded,
+                      uploadDate != null
+                          ? "${uploadDate.day}/${uploadDate.month}/${uploadDate.year}"
+                          : "–"),
+                  _metaChip(Icons.event_rounded,
+                      expiry != null
+                          ? "${expiry.day}/${expiry.month}/${expiry.year}"
+                          : "No expiry",
+                      color: isExpired ? _C.errorRed : _C.textTertiary),
+                  _metaChip(Icons.data_usage_rounded, "$fileSize KB"),
+                ]),
+              ]),
+            ),
 
-              // Actions
-              PopupMenuButton<String>(
-                icon: Icon(Icons.more_vert, color: colors.onSurfaceVariant),
-                onSelected: (value) {
-                  if (value == 'download') {
-                    _downloadDocument(context, data);
-                  } else if (value == 'delete') {
-                    _deleteDocument(context, doc.id, data['fileName'] ?? "document");
-                  } else if (value == 'preview' && isImage) {
-                    _showImagePreview(context, data);
-                  }
-                },
-                itemBuilder: (context) => [
-                  if (isImage)
-                    const PopupMenuItem(
-                      value: 'preview',
-                      child: Row(
-                        children: [
-                          Icon(Icons.remove_red_eye, size: 18),
-                          SizedBox(width: 8),
-                          Text("Preview"),
-                        ],
-                      ),
-                    ),
-                  const PopupMenuItem(
-                    value: 'download',
-                    child: Row(
-                      children: [
-                        Icon(Icons.download, size: 18),
-                        SizedBox(width: 8),
-                        Text("Download"),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(Icons.delete, color: Colors.red, size: 18),
-                        SizedBox(width: 8),
-                        Text("Delete", style: TextStyle(color: Colors.red)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+            // Menu
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded,
+                  size: 20, color: _C.textTertiary),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+              elevation: 8,
+              onSelected: (value) {
+                if (value == 'open') _openDocument(context, data);
+                if (value == 'download') _downloadDocument(context, data);
+                if (value == 'preview' && isImage) _showImagePreview(context, data);
+                if (value == 'delete') {
+                  _deleteDocument(context, doc.id, fileName);
+                }
+              },
+              itemBuilder: (_) => [
+                if (isImage)
+                  _menuItem('preview', Icons.image_search_rounded, 'Preview', _C.primaryBlue),
+                _menuItem('open', Icons.open_in_new_rounded, 'Open', _C.primaryBlue),
+                _menuItem('download', Icons.download_rounded, 'Download', _C.successGreen),
+                _menuItem('delete', Icons.delete_outline_rounded, 'Delete', _C.errorRed),
+              ],
+            ),
+          ]),
         ),
       ),
     );
   }
 
-  Widget _buildDetailItem({required IconData icon, required String text, required Color color}) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 12, color: color),
-        const SizedBox(width: 4),
-        Text(
-          text,
-          style: TextStyle(
-            fontSize: 11,
-            color: color,
+  PopupMenuItem<String> _menuItem(
+      String value, IconData icon, String label, Color color) {
+    return PopupMenuItem(
+      value: value,
+      child: Row(children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(8),
           ),
+          child: Icon(icon, size: 16, color: color),
         ),
-      ],
+        const SizedBox(width: 10),
+        Text(label,
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500,
+                color: value == 'delete' ? _C.errorRed : _C.textPrimary)),
+      ]),
     );
   }
 
-  Widget _buildDocumentGridItem(BuildContext context, DocumentSnapshot doc, ColorScheme colors) {
-    final data = doc.data() as Map<String, dynamic>;
-    final fileName = data['fileName']?.toString() ?? '';
-    final isImage = fileName.toLowerCase().endsWith('.jpg') || 
-                    fileName.toLowerCase().endsWith('.jpeg') || 
-                    fileName.toLowerCase().endsWith('.png');
-    final isExpired = (data['expiryDate'] as Timestamp?)?.toDate().isBefore(DateTime.now()) ?? false;
-
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: isImage ? () => _showImagePreview(context, data) : null,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            children: [
-              // Large File Icon/Thumbnail
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: colors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Center(
-                  child: _getFileIcon(fileName, colors, isExpired),
-                ),
-              ),
-              const SizedBox(height: 8),
-              // File Name
-              Text(
-                data['title'] ?? 'Untitled',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 12,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
-              // File Type
-              Text(
-                fileName.split('.').last.toUpperCase(),
-                style: TextStyle(
-                  fontSize: 10,
-                  color: colors.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  Widget _metaChip(IconData icon, String text, {Color color = _C.textTertiary}) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 11, color: color),
+      const SizedBox(width: 3),
+      Text(text,
+          style: TextStyle(fontSize: 11, color: color,
+              fontWeight: FontWeight.w500)),
+    ]);
   }
 
+  // ── Build ─────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text("Documents - $projectTitle"),
-        backgroundColor: colorScheme.primary,
-        foregroundColor: colorScheme.onPrimary,
-      ),
+      backgroundColor: _C.lightGray,
+      appBar: _buildAppBar(context),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
-            .collection('projects')
-            .doc(projectId)
+            .collection('projects').doc(projectId)
             .collection('documents')
             .orderBy('uploadDate', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(child: CircularProgressIndicator(
+                color: _C.primaryBlue, strokeWidth: 2.5));
           }
           final docs = snapshot.data!.docs;
+          if (docs.isEmpty) return _buildEmpty();
 
-          if (docs.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.folder_open_outlined,
-                    size: 80,
-                    color: colorScheme.onSurface.withOpacity(0.3),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    "No documents uploaded yet",
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "Upload your first document by tapping the + button",
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            );
-          }
-
-          // Choose between List View or Grid View:
-          // Option 1: List View (default)
           return ListView.builder(
-            padding: const EdgeInsets.only(bottom: 16, top: 12),
+            padding: const EdgeInsets.only(top: 12, bottom: 100),
             itemCount: docs.length,
-            itemBuilder: (context, index) {
-              return _buildDocumentCard(context, docs[index], colorScheme);
-            },
+            itemBuilder: (_, i) => _buildDocumentCard(context, docs[i]),
           );
-
-          // Option 2: Grid View (uncomment to use)
-          /*
-          return GridView.builder(
-            padding: const EdgeInsets.all(16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 0.9,
-            ),
-            itemCount: docs.length,
-            itemBuilder: (context, index) {
-              return _buildDocumentGridItem(context, docs[index], colorScheme);
-            },
-          );
-          */
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => UploadDocumentScreen(
-                projectId: projectId,
-                projectTitle: projectTitle,
+      floatingActionButton: _buildFab(context),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+    );
+  }
+
+  // ── AppBar ────────────────────────────────────────────────────────────────────
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(kToolbarHeight),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(bottom: BorderSide(color: _C.borderGray, width: 1)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(children: [
+            Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                  color: _C.lightGray, borderRadius: BorderRadius.circular(12)),
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back_rounded,
+                    size: 20, color: _C.textSecondary),
+                onPressed: () => Navigator.pop(context),
+                padding: EdgeInsets.zero,
               ),
             ),
-          );
-        },
-        backgroundColor: colorScheme.primary,
-        foregroundColor: colorScheme.onPrimary,
-        icon: const Icon(Icons.add),
-        label: const Text("Upload Document"),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Text(
+                'Documents',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700,
+                    color: _C.textPrimary, letterSpacing: -0.3),
+              ),
+            ),
+          ]),
+        ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+    );
+  }
+
+  // ── FAB ───────────────────────────────────────────────────────────────────────
+  Widget _buildFab(BuildContext context) {
+    return FloatingActionButton.extended(
+      onPressed: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => UploadDocumentScreen(
+            projectId: projectId,
+            projectTitle: projectTitle,
+          ),
+        ),
+      ),
+      backgroundColor: _C.primaryBlue,
+      foregroundColor: Colors.white,
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      icon: const Icon(Icons.upload_file_rounded, size: 20),
+      label: const Text('Upload',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+    );
+  }
+
+  // ── Empty State ───────────────────────────────────────────────────────────────
+  Widget _buildEmpty() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(
+            width: 100, height: 100,
+            decoration: BoxDecoration(
+                color: _C.lightGray, shape: BoxShape.circle,
+                border: Border.all(color: _C.borderGray)),
+            child: const Icon(Icons.folder_open_rounded,
+                size: 48, color: _C.textTertiary),
+          ),
+          const SizedBox(height: 20),
+          const Text("No Documents Yet",
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700,
+                  color: _C.textPrimary, letterSpacing: -0.4)),
+          const SizedBox(height: 8),
+          const Text("Upload your first document using the button below",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: _C.textSecondary, height: 1.5)),
+        ]),
+      ),
     );
   }
 }
