@@ -4,10 +4,37 @@ import 'package:flutter/material.dart';
 import 'package:track_site_pro_app/screens/expenses/ExpenseHistoryScreen.dart';
 import 'package:track_site_pro_app/screens/projects/add_project_screen.dart';
 import 'package:track_site_pro_app/screens/projects/edit_project_screen.dart';
-import 'package:track_site_pro_app/screens/dpr/upload_dpr_screen.dart';
-import 'package:track_site_pro_app/screens/dpr/dpr_history_screen.dart';
 import 'package:track_site_pro_app/screens/documents/DocumentListScreen.dart';
-import 'package:track_site_pro_app/screens/resources/ResourceHistoryScreen.dart';
+import 'package:track_site_pro_app/screens/payments/PaymentHistoryScreen.dart';
+import 'package:track_site_pro_app/screens/invoices/invoice_history_screen.dart';
+import 'package:track_site_pro_app/services/currency_format.dart';
+
+// Modern Color Palette - Clean & Professional Blue Theme
+class AppColors {
+  static const primaryBlue = Color(0xFF2563EB);
+  static const lightBlue = Color(0xFFEFF6FF);
+  static const mediumBlue = Color(0xFFBFDBFE);
+  static const darkBlue = Color(0xFF1E40AF);
+  
+  static const successGreen = Color(0xFF10B981);
+  static const lightGreen = Color(0xFFECFDF5);
+  
+  static const warningOrange = Color(0xFFF59E0B);
+  static const lightOrange = Color(0xFFFEF3C7);
+  
+  static const neutralGray = Color(0xFF6B7280);
+  static const lightGray = Color(0xFFF9FAFB);
+  static const borderGray = Color(0xFFE5E7EB);
+  
+  static const textPrimary = Color(0xFF111827);
+  static const textSecondary = Color(0xFF6B7280);
+  static const textTertiary = Color(0xFF9CA3AF);
+  
+  // Payment status colors
+  static const unpaidRed = Color(0xFFEF4444);
+  static const partiallyPaidOrange = Color(0xFFF59E0B);
+  static const fullyPaidGreen = Color(0xFF10B981);
+}
 
 class ProjectListScreen extends StatefulWidget {
   const ProjectListScreen({super.key});
@@ -18,17 +45,16 @@ class ProjectListScreen extends StatefulWidget {
 
 class _ProjectListScreenState extends State<ProjectListScreen> with WidgetsBindingObserver {
   String searchQuery = '';
-  String? firmId;
   String filter = 'All';
+  final Map<String, String> _paymentStatusCache = {}; // Cache for payment status
 
-  final List<String> _filters = const ['All', 'Active', 'Delayed', 'Completed'];
+  final List<String> _filters = const ['All', 'Unpaid', 'Partially Paid', 'Fully Paid'];
   final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadFirmId();
   }
 
   @override
@@ -45,52 +71,110 @@ class _ProjectListScreenState extends State<ProjectListScreen> with WidgetsBindi
     }
   }
 
-  Future<void> _loadFirmId() async {
-    try {
-      final uid = FirebaseAuth.instance.currentUser!.uid;
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      if (mounted) {
-        setState(() {
-          firmId = userDoc.data()?['assignedFirmId'];
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load firm: $e')),
-        );
-      }
-    }
-  }
-
   String _formatDate(Timestamp? ts) {
     if (ts == null) return "-";
     final date = ts.toDate();
-    return "${date.day}-${date.month}-${date.year}";
+    return "${date.day}/${date.month}/${date.year}";
+  }
+
+  // Updated currency formatter with proper comma separation
+  String _formatCurrency(double amount) {
+    return formatPKR(amount);
   }
 
   Future<void> _deleteProject(BuildContext context, String projectId) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Delete Project"),
-        content: const Text(
-          "Are you sure you want to permanently delete this project and ALL its DPRs, documents, expenses and resources?",
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.warning_rounded,
+                  color: Colors.red,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                "Delete Project",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                "This will permanently delete this project and ALL its documents, expenses, payments, invoices and resources. This action cannot be undone.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 28),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        side: const BorderSide(color: AppColors.borderGray),
+                        foregroundColor: AppColors.textSecondary,
+                      ),
+                      child: const Text(
+                        "Cancel",
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        "Delete",
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("Cancel"),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("Delete"),
-          ),
-        ],
       ),
     );
 
@@ -114,190 +198,382 @@ class _ProjectListScreenState extends State<ProjectListScreen> with WidgetsBindi
         }
       }
 
-      await deleteSubcollection('dprs');
       await deleteSubcollection('documents');
       await deleteSubcollection('expenses');
+      await deleteSubcollection('payments');
       await deleteSubcollection('resources');
+      await deleteSubcollection('invoices');
       await projectRef.delete();
+
+      // Clear cache for this project
+      _paymentStatusCache.remove(projectId);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Project deleted permanently")),
+          const SnackBar(
+            content: Text("Project deleted successfully"),
+            backgroundColor: AppColors.successGreen,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Delete failed: $e")),
+          SnackBar(
+            content: Text("Delete failed: $e"),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
   }
 
-  Widget _buildStatusChip(String? status, ColorScheme colors) {
-    final s = (status ?? '').trim();
-    if (s.isEmpty) return const SizedBox.shrink();
-
-    Color bg;
-    Color fg;
-    IconData icon;
-
-    switch (s) {
-      case 'Active':
-        bg = Colors.blue.shade100;
-        fg = Colors.blue.shade800;
-        icon = Icons.play_arrow_rounded;
-        break;
-      case 'Delayed':
-        bg = Colors.red.shade100;
-        fg = Colors.red.shade800;
-        icon = Icons.warning_amber_rounded;
-        break;
-      case 'Completed':
-        bg = Colors.green.shade100;
-        fg = Colors.green.shade800;
-        icon = Icons.check_circle_rounded;
-        break;
-      default:
-        bg = colors.surfaceVariant;
-        fg = colors.onSurfaceVariant;
-        icon = Icons.info_outline_rounded;
+  // Optimized function to determine payment status with caching
+  Future<String> _getPaymentStatus(String projectId, double totalAmount) async {
+    // Return from cache if available
+    if (_paymentStatusCache.containsKey(projectId)) {
+      return _paymentStatusCache[projectId]!;
     }
 
-    return Chip(
-      label: Text(s),
-      avatar: Icon(icon, size: 18, color: fg),
-      backgroundColor: bg,
-      labelStyle: TextStyle(color: fg, fontWeight: FontWeight.w600),
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
+    try {
+      final paymentsSnapshot = await FirebaseFirestore.instance
+          .collection('projects')
+          .doc(projectId)
+          .collection('payments')
+          .get();
+
+      String status;
+
+      if (paymentsSnapshot.docs.isEmpty) {
+        status = 'Unpaid';
+      } else {
+        double totalPayments = 0;
+        bool has50Percent = false;
+        bool has80Percent = false;
+        bool has100Percent = false;
+
+        for (var doc in paymentsSnapshot.docs) {
+          final data = doc.data();
+          final amount = (data['amount'] ?? 0).toDouble();
+          totalPayments += amount;
+          
+          final paymentType = data['paymentType'] ?? '';
+          if (paymentType.contains('50%')) has50Percent = true;
+          if (paymentType.contains('80%')) has80Percent = true;
+          if (paymentType.contains('100%')) has100Percent = true;
+        }
+
+        if (has100Percent || totalPayments >= totalAmount) {
+          status = 'Fully Paid';
+        } else if (has50Percent || has80Percent || totalPayments > 0) {
+          status = 'Partially Paid';
+        } else {
+          status = 'Unpaid';
+        }
+      }
+
+      // Store in cache
+      _paymentStatusCache[projectId] = status;
+      return status;
+    } catch (e) {
+      return 'Unpaid';
+    }
   }
 
-  Widget _buildEmptyState(ColorScheme colors) {
+  // Function to load all payment statuses in batch
+  Future<Map<String, String>> _loadAllPaymentStatuses(List<Map<String, dynamic>> projects) async {
+    final Map<String, String> statuses = {};
+    final List<Future> futures = [];
+
+    for (var project in projects) {
+      final projectId = project['id'];
+      final totalAmount = ((project['totalAmount'] ?? 0) as num).toDouble();
+      
+      futures.add(_getPaymentStatus(projectId, totalAmount).then((status) {
+        statuses[projectId] = status;
+      }));
+    }
+
+    await Future.wait(futures);
+    return statuses;
+  }
+
+  Widget _buildEmptyState() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.all(40),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.work_off_rounded, size: 80, color: colors.primary.withOpacity(.35)),
+            Container(
+              width: 120,
+              height: 120,
+              decoration: const BoxDecoration(
+                color: AppColors.lightGray,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.folder_open_rounded,
+                size: 56,
+                color: AppColors.textTertiary,
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              "No Projects Found",
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+                letterSpacing: -0.5,
+              ),
+            ),
             const SizedBox(height: 12),
-            Text(
-              'No projects found',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: colors.onSurface),
-            ),    
+            const Text(
+              "Try adjusting your search or filter",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 15,
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
+  Color _getFilterColor(String filter) {
+    switch (filter) {
+      case 'Unpaid':
+        return AppColors.unpaidRed;
+      case 'Partially Paid':
+        return AppColors.partiallyPaidOrange;
+      case 'Fully Paid':
+        return AppColors.fullyPaidGreen;
+      default:
+        return AppColors.primaryBlue;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-
     return Scaffold(
-      appBar: AppBar(
-        elevation: 0,
-        centerTitle: true,
-        backgroundColor: colors.surface,
-        foregroundColor: colors.onSurface,
-        titleSpacing: 0,
-        title: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Container(
-            decoration: BoxDecoration(
-              color: colors.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                const SizedBox(width: 12),
-                const Icon(Icons.search, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (v) => setState(() => searchQuery = v.toLowerCase().trim()),
-                    decoration: const InputDecoration(
-                      hintText: 'Search by job no, location, title',
-                      border: InputBorder.none,
-                    ),
-                    textInputAction: TextInputAction.search,
-                  ),
-                ),
-                if (searchQuery.isNotEmpty)
-                  IconButton(
-                    tooltip: 'Clear',
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => searchQuery = '');
-                    },
-                  ),
-              ],
+      backgroundColor: Colors.white,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(210),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(
+              bottom: BorderSide(
+                color: AppColors.borderGray,
+                width: 1,
+              ),
             ),
           ),
-        ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(52),
-          child: Container(
-            alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: colors.surface,
-              border: Border(
-                bottom: BorderSide(color: colors.outlineVariant, width: 0.5),
-              ),
-            ),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: _filters.map((f) {
-                  final selected = filter == f;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(f),
-                      selected: selected,
-                      onSelected: (_) => setState(() => filter = f),
-                      selectedColor: colors.primaryContainer,
-                      labelStyle: TextStyle(
-                        color: selected ? colors.onPrimaryContainer : colors.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
+          child: SafeArea(
+            child: Column(
+              children: [
+                // Header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                  child: Row(
+                    children: [
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Projects',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                              letterSpacing: -1,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Manage all your construction projects',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
                       ),
-                      backgroundColor: colors.surfaceContainerHighest,
+                    ],
+                  ),
+                ),
+
+                // Search Bar
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.lightGray,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.borderGray),
                     ),
-                  );
-                }).toList(),
-              ),
+                    child: Row(
+                      children: [
+                        const SizedBox(width: 16),
+                        const Icon(
+                          Icons.search_rounded,
+                          size: 20,
+                          color: AppColors.textTertiary,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            onChanged: (v) => setState(() => searchQuery = v.toLowerCase().trim()),
+                            decoration: const InputDecoration(
+                              hintText: 'Search by job no, work order, description...',
+                              hintStyle: TextStyle(
+                                color: AppColors.textTertiary,
+                                fontSize: 14,
+                              ),
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (searchQuery.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 20),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => searchQuery = '');
+                            },
+                            color: AppColors.textTertiary,
+                          ),
+                        const SizedBox(width: 8),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Filter Chips
+                SizedBox(
+                  height: 44,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    itemCount: _filters.length,
+                    itemBuilder: (context, index) {
+                      final f = _filters[index];
+                      final selected = filter == f;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: FilterChip(
+                          label: Text(f),
+                          selected: selected,
+                          onSelected: (_) => setState(() {
+                            filter = f;
+                            _paymentStatusCache.clear(); // Clear cache when filter changes
+                          }),
+                          backgroundColor: Colors.white,
+                          selectedColor: _getFilterColor(f),
+                          side: BorderSide(
+                            color: selected ? _getFilterColor(f) : AppColors.borderGray,
+                          ),
+                          labelStyle: TextStyle(
+                            color: selected ? Colors.white : AppColors.textSecondary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
         ),
       ),
-      body: firmId == null
-          ? const Center(child: CircularProgressIndicator())
-          : StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('projects')
-                  .where('firmId', isEqualTo: firmId)
-                  .snapshots(),
-              builder: (context, snapshot) {
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(FirebaseAuth.instance.currentUser!.uid)
+            .snapshots(),
+        builder: (context, userSnapshot) {
+          if (userSnapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(
+                color: AppColors.primaryBlue,
+                strokeWidth: 3,
+              ),
+            );
+          }
+          if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
+            return _buildEmptyState();
+          }
+          final firmId = userSnapshot.data!.get('assignedFirmId');
+          if (firmId == null) {
+            return _buildEmptyState();
+          }
+
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('projects')
+                .where('firmId', isEqualTo: firmId)
+                .snapshots(),
+            builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.primaryBlue,
+                      strokeWidth: 3,
+                    ),
+                  );
                 }
                 if (snapshot.hasError) {
-                  return Center(child: Text('Failed to load projects: ${snapshot.error}'));
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          size: 48,
+                          color: Colors.red,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Failed to load projects',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${snapshot.error}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: AppColors.textSecondary,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  );
                 }
                 if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.primaryBlue,
+                      strokeWidth: 3,
+                    ),
+                  );
                 }
 
                 var projects = snapshot.data!.docs.map((doc) {
@@ -308,57 +584,107 @@ class _ProjectListScreenState extends State<ProjectListScreen> with WidgetsBindi
                   };
                 }).toList();
 
-                if (filter != 'All') {
-                  projects = projects
-                      .where((p) => (p['status'] ?? '').toString().toLowerCase() == filter.toLowerCase())
-                      .toList();
-                }
-
-                const order = {"Active": 0, "Delayed": 1, "Completed": 2};
-                projects.sort((a, b) {
-                  final statusA = (a['status'] ?? '').toString();
-                  final statusB = (b['status'] ?? '').toString();
-                  return (order[statusA] ?? 99).compareTo(order[statusB] ?? 99);
-                });
-
+                // Filter projects by search query
                 projects = projects.where((data) {
                   final jobNo = data['jobNo']?.toString().toLowerCase() ?? '';
-                  final location = data['location']?.toString().toLowerCase() ?? '';
-                  final title = data['projectTitle']?.toString().toLowerCase() ?? '';
                   final workOrderNo = data['workOrderNo']?.toString().toLowerCase() ?? '';
+                  final tenderEnquiryNo = data['tenderEnquiryNo']?.toString().toLowerCase() ?? '';
+                  final jobDescription = data['jobDescription']?.toString().toLowerCase() ?? '';
                   final q = searchQuery.toLowerCase();
                   return jobNo.contains(q) || 
-                         location.contains(q) || 
-                         title.contains(q) || 
-                         workOrderNo.contains(q);
+                         workOrderNo.contains(q) || 
+                         tenderEnquiryNo.contains(q) ||
+                         jobDescription.contains(q);
                 }).toList();
 
-                if (projects.isEmpty) return _buildEmptyState(colors);
+                if (projects.isEmpty) return _buildEmptyState();
 
-                return ListView.builder(
-                  padding: const EdgeInsets.only(bottom: 88),
-                  itemCount: projects.length,
-                  itemBuilder: (context, index) {
-                    final data = projects[index];
-                    return _ProjectCard(
-                      data: data,
-                      colors: colors,
-                      onDelete: () => _deleteProject(context, data['id']),
-                      formatDate: _formatDate,
-                      buildStatusChip: _buildStatusChip,
+                return FutureBuilder<Map<String, String>>(
+                  future: _loadAllPaymentStatuses(projects),
+                  builder: (context, statusSnapshot) {
+                    if (statusSnapshot.connectionState == ConnectionState.waiting && _paymentStatusCache.isEmpty) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.primaryBlue,
+                          strokeWidth: 3,
+                        ),
+                      );
+                    }
+
+                    final statuses = statusSnapshot.data ?? _paymentStatusCache;
+                    
+                    // Filter by payment status
+                    List<Map<String, dynamic>> filteredProjects;
+                    if (filter == 'All') {
+                      filteredProjects = projects;
+                    } else {
+                      filteredProjects = projects.where((project) {
+                        final status = statuses[project['id']] ?? 'Unpaid';
+                        return status == filter;
+                      }).toList();
+                    }
+
+                    if (filteredProjects.isEmpty) {
+                      return _buildEmptyState();
+                    }
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+                      itemCount: filteredProjects.length,
+                      itemBuilder: (context, index) {
+                        final data = filteredProjects[index];
+                        final paymentStatus = statuses[data['id']] ?? 'Unpaid';
+                        
+                        return _ProjectCard(
+                          data: data,
+                          paymentStatus: paymentStatus,
+                          onEdit: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => EditProjectScreen(
+                                  projectId: data['id'],
+                                  projectData: data,
+                                ),
+                              ),
+                            );
+                          },
+                          onDelete: () => _deleteProject(context, data['id']),
+                          formatDate: _formatDate,
+                          formatCurrency: _formatCurrency,
+                        );
+                      },
                     );
                   },
                 );
-              },
-            ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: colors.primary,
-        foregroundColor: colors.onPrimary,
-        onPressed: () async {
-          await Navigator.push(context, MaterialPageRoute(builder: (_) => const AddProjectScreen()));
+            },
+          );
         },
-        icon: const Icon(Icons.add),
-        label: const Text("Add Project"),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: AppColors.primaryBlue,
+        foregroundColor: Colors.white,
+        elevation: 4,
+        onPressed: () async {
+          final created = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AddProjectScreen()),
+          );
+          if (created == true && mounted) {
+            // Clear cached payment statuses so the new project appears fresh
+            setState(() {
+              _paymentStatusCache.clear();
+            });
+          }
+        },
+        icon: const Icon(Icons.add_rounded),
+        label: const Text(
+          "Add Project",
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.2,
+          ),
+        ),
       ),
     );
   }
@@ -366,484 +692,591 @@ class _ProjectListScreenState extends State<ProjectListScreen> with WidgetsBindi
 
 class _ProjectCard extends StatelessWidget {
   final Map<String, dynamic> data;
-  final ColorScheme colors;
+  final String paymentStatus;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
   final String Function(Timestamp?) formatDate;
-  final Widget Function(String?, ColorScheme) buildStatusChip;
+  final String Function(double) formatCurrency;
 
   const _ProjectCard({
     required this.data,
-    required this.colors,
+    required this.paymentStatus,
+    required this.onEdit,
     required this.onDelete,
     required this.formatDate,
-    required this.buildStatusChip,
+    required this.formatCurrency,
   });
 
   @override
   Widget build(BuildContext context) {
-    final progress = ((data['progress'] ?? 0.0) as num).toDouble();
-    final totalBoqValue = ((data['totalBoqValue'] ?? 0) as num).toDouble();
-    final totalCompletedValue = ((data['totalCompletedValue'] ?? 0) as num).toDouble();
-    final isCompleted = data['status'] == 'Completed';
+    final totalAmount = ((data['totalAmount'] ?? 0) as num).toDouble();
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOut,
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      child: Card(
-        elevation: 2,
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        color: colors.surface,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header Section
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                if (data['workOrderNo'] != null && data['workOrderNo'].toString().isNotEmpty)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: colors.primary.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(color: colors.primary.withOpacity(0.3)),
-                                    ),
-                                    child: Text(
-                                      'WO: ${data['workOrderNo']}',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: colors.primary,
-                                      ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.borderGray),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Section
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Payment Status Badge
+                          _buildPaymentStatusBadge(paymentStatus),
+                          const SizedBox(height: 12),
+                          
+                          // Reference Numbers
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              if (data['workOrderNo'] != null && data['workOrderNo'].toString().isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.lightBlue,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    'WO ${data['workOrderNo']}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.primaryBlue,
+                                      letterSpacing: 0.3,
                                     ),
                                   ),
-                                const SizedBox(width: 6),
-                                if (data['jobNo'] != null && data['jobNo'].toString().isNotEmpty)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: colors.secondary.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(color: colors.secondary.withOpacity(0.3)),
-                                    ),
-                                    child: Text(
-                                      'Job: ${data['jobNo']}',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: colors.secondary,
-                                      ),
+                                ),
+                              if (data['jobNo'] != null && data['jobNo'].toString().isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.lightGray,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: AppColors.borderGray),
+                                  ),
+                                  child: Text(
+                                    'Job #${data['jobNo']}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.textSecondary,
+                                      letterSpacing: 0.3,
                                     ),
                                   ),
-                              ],
+                                ),
+                              if (data['tenderEnquiryNo'] != null && data['tenderEnquiryNo'].toString().isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.lightGray,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: AppColors.borderGray),
+                                  ),
+                                  child: Text(
+                                    'TE ${data['tenderEnquiryNo']}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.textSecondary,
+                                      letterSpacing: 0.3,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          
+                          // Job Description
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.lightGray,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: AppColors.borderGray),
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              data['projectTitle'] ?? 'Untitled Project',
-                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      PopupMenuButton<String>(
-                        icon: const Icon(Icons.more_vert),
-                        onSelected: (value) {
-                          if (value == 'delete') {
-                            onDelete();
-                          }
-                        },
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(
-                            value: 'delete',
-                            child: Row(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(Icons.delete, color: Colors.red, size: 20),
-                                SizedBox(width: 8),
-                                Text("Delete Project", style: TextStyle(color: Colors.red)),
+                                const Row(
+                                  children: [
+                                    Icon(Icons.description_outlined, 
+                                         size: 14, 
+                                         color: AppColors.textTertiary),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Description',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textTertiary,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  data['jobDescription'] ?? 'No description',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: AppColors.textPrimary,
+                                    height: 1.4,
+                                  ),
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ],
                             ),
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    children: [
-                      buildStatusChip(data['status'], colors),
-                      if (data['jobType'] != null && data['jobType'].toString().isNotEmpty)
-                        Chip(
-                          label: Text(data['jobType']),
-                          backgroundColor: colors.surfaceContainerHighest,
-                          labelStyle: TextStyle(color: colors.onSurfaceVariant, fontSize: 11),
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            // Project Details - Compact Horizontal Layout
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _CompactInfoItem(
-                          icon: Icons.location_on_outlined,
-                          label: 'Location',
-                          value: data['location']?.toString() ?? '-',
-                          colors: colors,
-                        ),
-                      ),
-                      Container(width: 1, height: 30, color: colors.outlineVariant.withOpacity(0.3)),
-                      Expanded(
-                        child: _CompactInfoItem(
-                          icon: Icons.map_outlined,
-                          label: 'Region',
-                          value: data['region']?.toString() ?? '-',
-                          colors: colors,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _CompactInfoItem(
-                          icon: Icons.calendar_today,
-                          label: 'Start',
-                          value: formatDate(data['startDate']),
-                          colors: colors,
-                        ),
-                      ),
-                      Container(width: 1, height: 30, color: colors.outlineVariant.withOpacity(0.3)),
-                      Expanded(
-                        child: _CompactInfoItem(
-                          icon: Icons.event_available,
-                          label: 'End',
-                          value: formatDate(data['completionDate']),
-                          colors: colors,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Financial Summary
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('projects')
-                    .doc(data['id'])
-                    .collection('expenses')
-                    .snapshots(),
-                builder: (context, expenseSnap) {
-                  double totalExpenses = 0.0;
-                  if (expenseSnap.hasData) {
-                    for (var doc in expenseSnap.data!.docs) {
-                      final expData = doc.data() as Map<String, dynamic>;
-                      totalExpenses += (expData['amount'] ?? 0).toDouble();
-                    }
-                  }
-
-                  final remainingBoq = totalBoqValue - totalCompletedValue;
-                  final profit = totalCompletedValue - totalExpenses;
-
-                  return Column(
-                    children: [
-                      // Financial Summary Box
-                      Container(
-                        padding: const EdgeInsets.all(12),
+                    ),
+                    
+                    // More Menu with Edit and Delete options - Consistently styled
+                    PopupMenuButton<String>(
+                      icon: Container(
+                        width: 36,
+                        height: 36,
                         decoration: BoxDecoration(
-                          color: colors.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(12),
+                          color: AppColors.lightGray,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.borderGray),
                         ),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _FinanceItem(
-                                    label: "Total BOQ",
-                                    value: "PKR ${totalBoqValue.toStringAsFixed(0)}",
-                                    colors: colors,
-                                  ),
-                                ),
-                                Expanded(
-                                  child: _FinanceItem(
-                                    label: "Completed",
-                                    value: "PKR ${totalCompletedValue.toStringAsFixed(0)}",
-                                    colors: colors,
-                                    valueColor: colors.primary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _FinanceItem(
-                                    label: "Total Expense",
-                                    value: "PKR ${totalExpenses.toStringAsFixed(0)}",
-                                    colors: colors,
-                                    valueColor: Colors.orange,
-                                  ),
-                                ),
-                                Expanded(
-                                  child: _FinanceItem(
-                                    label: isCompleted ? (profit >= 0 ? "Profit" : "Loss") : "Remaining",
-                                    value: isCompleted 
-                                        ? "PKR ${profit.abs().toStringAsFixed(0)}"
-                                        : "PKR ${remainingBoq.toStringAsFixed(0)}",
-                                    colors: colors,
-                                    valueColor: isCompleted
-                                        ? (profit >= 0 ? Colors.green : Colors.red)
-                                        : (remainingBoq > 0 ? Colors.blue : Colors.grey),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                        child: const Icon(
+                          Icons.more_vert_rounded,
+                          size: 20,
+                          color: AppColors.textSecondary,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      // Progress Bar
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      onSelected: (value) {
+                        if (value == 'edit') {
+                          onEdit();
+                        } else if (value == 'delete') {
+                          onDelete();
+                        } else if (value == 'payments') {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PaymentHistoryScreen(
+                                projectId: data['id'],
+                                projectTitle: data['jobDescription'] ?? 'Project',
+                              ),
+                            ),
+                          );
+                        } else if (value == 'invoices') {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => InvoiceHistoryScreen(
+                                projectId: data['id'],
+                                projectTitle: data['jobDescription'] ?? 'Project',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      color: Colors.white,
+                      elevation: 2,
+                      itemBuilder: (context) => [
+                        PopupMenuItem(
+                          value: 'edit',
+                          height: 48,
+                          child: Row(
                             children: [
-                              Text(
-                                'Progress',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: colors.onSurfaceVariant,
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: AppColors.lightBlue,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Icon(
+                                  Icons.edit_rounded,
+                                  color: AppColors.primaryBlue,
+                                  size: 16,
                                 ),
                               ),
-                              Text(
-                                "${progress.toStringAsFixed(1)}%",
-                                style: TextStyle(fontWeight: FontWeight.bold, color: colors.primary),
+                              const SizedBox(width: 12),
+                              const Text(
+                                "Edit Project",
+                                style: TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 6),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: LinearProgressIndicator(
-                              value: (progress / 100).clamp(0.0, 1.0),
-                              backgroundColor: colors.surfaceContainerHighest,
-                              color: colors.primary,
-                              minHeight: 8,
+                        ),
+                        PopupMenuItem(
+                          value: 'delete',
+                          height: 48,
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Icon(
+                                  Icons.delete_rounded,
+                                  color: Colors.red,
+                                  size: 16,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                "Delete Project",
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuDivider(),
+                        PopupMenuItem(
+                          value: 'payments',
+                          height: 44,
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: AppColors.lightGreen,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Icon(
+                                  Icons.payment_rounded,
+                                  color: AppColors.successGreen,
+                                  size: 16,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                "View Payments",
+                                style: TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'invoices',
+                          height: 44,
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: AppColors.lightBlue,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Icon(
+                                  Icons.receipt_rounded,
+                                  color: AppColors.primaryBlue,
+                                  size: 16,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                "View Invoices",
+                                style: TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: 16),
+                
+                // Single Date Field
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.lightGray,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.calendar_today_rounded,
+                        size: 16,
+                        color: AppColors.textTertiary,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Project Date: ${formatDate(data['date'])}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Financial Summary - Project Value and Expenses with proper formatting
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('projects')
+                  .doc(data['id'])
+                  .collection('expenses')
+                  .snapshots(),
+              builder: (context, expenseSnap) {
+                double totalExpenses = 0.0;
+                if (expenseSnap.hasData) {
+                  for (var doc in expenseSnap.data!.docs) {
+                    final expData = doc.data() as Map<String, dynamic>;
+                    totalExpenses += (expData['amount'] ?? 0).toDouble();
+                  }
+                }
+
+                return Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.lightGray,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _buildFinanceItem(
+                          "Project Value",
+                          "PKR ${formatCurrency(totalAmount)}",
+                          AppColors.primaryBlue,
+                        ),
+                      ),
+                      Expanded(
+                        child: _buildFinanceItem(
+                          "Total Expenses",
+                          "PKR ${formatCurrency(totalExpenses)}",
+                          AppColors.warningOrange,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Supervisor Information (if assigned)
+          if (data['siteSupervisorName'] != null && data['siteSupervisorName'].toString().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.lightGreen,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.successGreen.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.supervised_user_circle_rounded,
+                      color: AppColors.successGreen,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Site Supervisor',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.successGreen,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            data['siteSupervisorName'],
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
                             ),
                           ),
                         ],
                       ),
-                    ],
-                  );
-                },
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Action Buttons
-            Container(
-              decoration: BoxDecoration(
-                color: colors.surfaceContainerHighest.withOpacity(0.3),
-                border: Border(top: BorderSide(color: colors.outlineVariant, width: 0.5)),
-              ),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                child: Row(
-                  children: [
-                    _ActionButton(
-                      icon: Icons.edit_outlined,
-                      label: 'Edit',
-                      colors: colors,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => EditProjectScreen(
-                              projectId: data['id'],
-                              projectData: data,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    _ActionButton(
-                      icon: Icons.upload_file_outlined,
-                      label: 'Upload DPR',
-                      colors: colors,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => UploadDprScreen(
-                              projectId: data['id'],
-                              projectTitle: data['projectTitle'],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    _ActionButton(
-                      icon: Icons.history_outlined,
-                      label: 'DPR History',
-                      colors: colors,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => DprHistoryScreen(
-                              projectId: data['id'],
-                              projectTitle: data['projectTitle'],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    _ActionButton(
-                      icon: Icons.receipt_long_outlined,
-                      label: 'Expenses',
-                      colors: colors,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ExpenseHistoryScreen(
-                              projectId: data['id'],
-                              projectTitle: data['projectTitle'] ?? 'Project',
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    _ActionButton(
-                      icon: Icons.folder_outlined,
-                      label: 'Documents',
-                      colors: colors,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => DocumentListScreen(
-                              projectId: data['id'],
-                              projectTitle: data['projectTitle'] ?? 'Project',
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    _ActionButton(
-                      icon: Icons.inventory_2_outlined,
-                      label: 'Materials',
-                      colors: colors,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ResourceHistoryScreen(
-                              projectId: data['id'],
-                              projectTitle: data['projectTitle'] ?? 'Project',
-                            ),
-                          ),
-                        );
-                      },
                     ),
                   ],
                 ),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
-class _CompactInfoItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final ColorScheme colors;
+          const SizedBox(height: 20),
 
-  const _CompactInfoItem({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.colors,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: colors.onSurfaceVariant),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: colors.onSurfaceVariant,
+          // Action Buttons (without Edit button)
+          Container(
+            decoration: const BoxDecoration(
+              border: Border(
+                top: BorderSide(color: AppColors.borderGray, width: 1),
+              ),
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  _ActionButton(
+                    icon: Icons.receipt_long_rounded,
+                    label: 'Expenses',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ExpenseHistoryScreen(
+                            projectId: data['id'],
+                            projectTitle: data['jobDescription'] ?? 'Project',
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: colors.onSurface,
+                  const SizedBox(width: 8),
+                  _ActionButton(
+                    icon: Icons.folder_rounded,
+                    label: 'Documents',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => DocumentListScreen(
+                            projectId: data['id'],
+                            projectTitle: data['jobDescription'] ?? 'Project',
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPaymentStatusBadge(String status) {
+    Color bgColor;
+    Color textColor;
+    IconData icon;
+
+    switch (status) {
+      case 'Unpaid':
+        bgColor = AppColors.unpaidRed.withOpacity(0.1);
+        textColor = AppColors.unpaidRed;
+        icon = Icons.cancel_rounded;
+        break;
+      case 'Partially Paid':
+        bgColor = AppColors.partiallyPaidOrange.withOpacity(0.1);
+        textColor = AppColors.partiallyPaidOrange;
+        icon = Icons.hourglass_top_rounded;
+        break;
+      case 'Fully Paid':
+        bgColor = AppColors.fullyPaidGreen.withOpacity(0.1);
+        textColor = AppColors.fullyPaidGreen;
+        icon = Icons.check_circle_rounded;
+        break;
+      default:
+        bgColor = AppColors.lightGray;
+        textColor = AppColors.textSecondary;
+        icon = Icons.info_outline_rounded;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: textColor),
+          const SizedBox(width: 6),
+          Text(
+            status,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: textColor,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFinanceItem(String label, String value, Color valueColor) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            color: AppColors.textSecondary,
+            letterSpacing: 0.2,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: valueColor,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -851,85 +1284,46 @@ class _CompactInfoItem extends StatelessWidget {
 class _ActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
-  final ColorScheme colors;
   final VoidCallback onTap;
 
   const _ActionButton({
     required this.icon,
     required this.label,
-    required this.colors,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            border: Border.all(color: colors.outline.withOpacity(0.3)),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 18, color: colors.primary),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: colors.onSurface,
-                ),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.lightGray,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.borderGray),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon, 
+              size: 18, 
+              color: AppColors.primaryBlue,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
-    );
-  }
-}
-
-class _FinanceItem extends StatelessWidget {
-  final String label;
-  final String value;
-  final ColorScheme colors;
-  final Color? valueColor;
-
-  const _FinanceItem({
-    required this.label,
-    required this.value,
-    required this.colors,
-    this.valueColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            color: colors.onSurface.withOpacity(0.6),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: valueColor ?? colors.onSurface,
-          ),
-        ),
-      ],
     );
   }
 }
