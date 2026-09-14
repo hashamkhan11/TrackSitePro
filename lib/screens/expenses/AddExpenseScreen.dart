@@ -3,6 +3,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../services/expense_repository.dart';
 
 // ── Shared colour palette ────────────────────────────────────────────────────
 class AppColors {
@@ -39,6 +40,7 @@ class AddExpenseScreen extends StatefulWidget {
 }
 
 class _AddExpenseScreenState extends State<AddExpenseScreen> {
+  final _expenseRepo = ExpenseRepository();
   final _formKey = GlobalKey<FormState>();
   final _descController = TextEditingController();
   final _amountController = TextEditingController();
@@ -209,14 +211,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             : Timestamp.now(),
         'updatedAt': Timestamp.now(),
       };
-      final ref = FirebaseFirestore.instance
-          .collection('projects')
-          .doc(widget.projectId)
-          .collection('expenses');
       if (_isEditMode) {
-        await ref.doc(widget.expenseId).update(data);
+        await _expenseRepo.updateExpense(
+            widget.projectId, widget.expenseId!, data);
       } else {
-        await ref.add(data);
+        await _expenseRepo.addExpense(widget.projectId, data);
       }
       _updateProjectTotalExpenses();
       if (mounted) {
@@ -316,19 +315,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   Future<void> _updateProjectTotalExpenses() async {
     try {
-      final projectRef = FirebaseFirestore.instance
-          .collection('projects')
-          .doc(widget.projectId);
-      final snap = await projectRef.collection('expenses').get();
-      double total = 0;
-      for (var doc in snap.docs) {
-        total += ((doc.data() as Map<String, dynamic>)['amount'] ?? 0)
-            .toDouble();
-      }
-      await projectRef.update({
-        'totalExpenses': total,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await _expenseRepo.recomputeTotalExpenses(widget.projectId);
     } catch (_) {}
   }
 

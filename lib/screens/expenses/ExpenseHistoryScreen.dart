@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:track_site_pro_app/screens/expenses/AddExpenseScreen.dart';
+import '../../services/expense_repository.dart';
 
 // ── Shared colour palette ────────────────────────────────────────────────────
 class AppColors {
@@ -34,6 +35,8 @@ class ExpenseHistoryScreen extends StatefulWidget {
 }
 
 class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
+  final _expenseRepo = ExpenseRepository();
+
   // ── Delete ─────────────────────────────────────────────────────────────────
   Future<void> _deleteExpense(String expenseId) async {
     final confirmed = await showDialog<bool>(
@@ -110,12 +113,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
     if (confirmed != true) return;
 
     try {
-      await FirebaseFirestore.instance
-          .collection('projects')
-          .doc(widget.projectId)
-          .collection('expenses')
-          .doc(expenseId)
-          .delete();
+      await _expenseRepo.deleteExpense(widget.projectId, expenseId);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -525,12 +523,7 @@ class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
         ),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('projects')
-            .doc(widget.projectId)
-            .collection('expenses')
-            .orderBy('date', descending: true)
-            .snapshots(),
+        stream: _expenseRepo.streamExpenses(widget.projectId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
