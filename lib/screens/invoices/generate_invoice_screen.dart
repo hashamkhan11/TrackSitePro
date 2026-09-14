@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/pdf_invoice_generator.dart';
+import '../../services/invoice_repository.dart';
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
 class _C {
@@ -38,6 +39,7 @@ class GenerateInvoiceScreen extends StatefulWidget {
 }
 
 class _GenerateInvoiceScreenState extends State<GenerateInvoiceScreen> {
+  final _invoiceRepo              = InvoiceRepository();
   final _formKey                  = GlobalKey<FormState>();
   final _exclusiveValueController = TextEditingController();
   final _pstRateController        = TextEditingController(text: '16');
@@ -101,9 +103,7 @@ class _GenerateInvoiceScreenState extends State<GenerateInvoiceScreen> {
         totalAmount:    double.parse(_totalAmountController.text),
       );
 
-      await FirebaseFirestore.instance
-          .collection('projects').doc(widget.projectId)
-          .collection('invoices').add({
+      await _invoiceRepo.addInvoice(widget.projectId, {
         'invoiceNumber':  widget.invoiceNumber,
         'date':           Timestamp.fromDate(_invoiceDate),
         'jobNo':          widget.jobNo,
@@ -112,7 +112,6 @@ class _GenerateInvoiceScreenState extends State<GenerateInvoiceScreen> {
         'pstRate':        double.parse(_pstRateController.text),
         'pstAmount':      double.parse(_pstAmountController.text),
         'totalAmount':    double.parse(_totalAmountController.text),
-        'createdAt':      FieldValue.serverTimestamp(),
         'pdfBytes':       pdfBytes,
       });
 

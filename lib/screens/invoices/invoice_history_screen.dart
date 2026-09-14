@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 import 'generate_invoice_screen.dart';
+import '../../services/invoice_repository.dart';
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
 class AppColors {
@@ -40,6 +41,8 @@ class InvoiceHistoryScreen extends StatefulWidget {
 }
 
 class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
+  final _invoiceRepo = InvoiceRepository();
+
   // ── Formatters ───────────────────────────────────────────────────────────────
   String _formatDate(DateTime date) => DateFormat('dd MMM yyyy').format(date);
 
@@ -233,9 +236,7 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
     if (confirm != true) return;
 
     try {
-      await FirebaseFirestore.instance
-          .collection('projects').doc(widget.projectId)
-          .collection('invoices').doc(invoiceId).delete();
+      await _invoiceRepo.deleteInvoice(widget.projectId, invoiceId);
       _snack('Invoice deleted successfully', AppColors.successGreen);
     } catch (e) {
       _snack('Delete failed: $e', AppColors.errorRed);
@@ -243,8 +244,7 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
   }
 
   Future<void> _navigateToGenerate() async {
-    final projectDoc = await FirebaseFirestore.instance
-        .collection('projects').doc(widget.projectId).get();
+    final projectDoc = await _invoiceRepo.fetchProject(widget.projectId);
     if (!mounted) return;
     final result = await Navigator.push(
       context,
@@ -267,11 +267,7 @@ class _InvoiceHistoryScreenState extends State<InvoiceHistoryScreen> {
       backgroundColor: AppColors.lightGray,
       appBar: _buildAppBar(),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('projects').doc(widget.projectId)
-            .collection('invoices')
-            .orderBy('date', descending: true)
-            .snapshots(),
+        stream: _invoiceRepo.streamInvoices(widget.projectId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator(
