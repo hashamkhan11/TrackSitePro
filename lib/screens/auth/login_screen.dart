@@ -574,7 +574,20 @@ class _VerificationDialog extends StatelessWidget {
                   margin: const EdgeInsets.all(16),
                 ));
               }
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('Failed to resend verification email: $e');
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: const Text(
+                      'Could not send verification email. Please try again.'),
+                  backgroundColor: Colors.red,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  margin: const EdgeInsets.all(16),
+                ));
+              }
+            }
           },
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF2563EB),
