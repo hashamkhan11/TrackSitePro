@@ -102,7 +102,9 @@ class _AddProjectScreenState extends State<AddProjectScreen> {
   Uint8List? _workOrderBytes;
   String? _workOrderFileName;
 
-  final String geminiApiKey = 'AIzaSyCcVL3S6Tp-3Q3UvqfAWmUsVNYztD2ML54';
+  // Supplied at build time with --dart-define=GEMINI_API_KEY=... — never hardcode
+  // a real key here, this file is public. Falls back to OCR when unset.
+  final String geminiApiKey = const String.fromEnvironment('GEMINI_API_KEY');
   DateTime? _lastApiCallTime;
   static const int _minSecondsBetweenCalls = 10;
   String? _workingModel;
@@ -198,6 +200,10 @@ class _AddProjectScreenState extends State<AddProjectScreen> {
   // ── AI helpers (logic unchanged) ───────────────────────────────────────────
 
   Future<void> _testGeminiModels() async {
+    if (geminiApiKey.isEmpty) {
+      setState(() { _workingModel = null; _useOCR = true; });
+      return;
+    }
     for (final model in ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']) {
       try {
         final r = await http.post(
