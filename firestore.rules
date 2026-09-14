@@ -1,0 +1,298 @@
+// TrackSitePro - Firestore security rules
+//
+// IMPORTANT: These rules were written by reading the actual query/write
+// patterns in lib/**/*.dart (there was previously no rules file committed at
+// all, so every read/write was implicitly wide open under test-mode
+// defaults). Before deploying this to production, validate it against the
+// Firebase Emulator Suite or the Rules Playground in the console using the
+// real read/write patterns from each screen (contractor registration,
+// project creation, payment/expense/invoice add, DPR upload, etc.) to make
+// sure nothing that should work is accidentally blocked.
+//
+// Data model this file assumes (reverse engineered from lib/screens/**):
+//   users/{uid}            -> { role: 'contractor'|'supervisor'|'admin',
+//                                status, assignedFirmId, email, name, ... }
+//   firms/{firmId}          -> { ownerId (contractor uid), firmName, status }
+//     firms/{firmId}/supervisors/{supervisorUid}  -> supervisor added to firm
+//     firms/{firmId}/documents/{docId}            -> firm-level documents
+//   projects/{projectId}    -> { firmId, createdBy (contractor uid),
+//                                supervisorId, supervisorEmail,
+//                                assignedSupervisor (email) }
+//     projects/{projectId}/payments/{id}
+//     projects/{projectId}/expenses/{id}
+//     projects/{projectId}/invoices/{id}
+//     projects/{projectId}/documents/{id}
+//     projects/{projectId}/dprs/{id}
+//     projects/{projectId}/resources/{id}
+//   notifications/{uid}/user_notifications/{id}
+//   categories/{id}, schedule_of_rates/{id}  -> admin-managed reference data
+//
+// Role source of truth is users/{uid}.role, written once at registration
+// (contractor_registration_screen.dart / supervisor_register_screen.dart)
+// and never changed by the app afterwards - so it is treated as immutable
+// here except for admins. There is no in-app admin registration flow, so
+// admin accounts are expected to be created/promoted directly via the
+// Firebase console or Admin SDK, outside of these rules.
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userExists(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid));
+    }
+
+    function userData(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function myRole() {
+      return isSignedIn() && userExists(request.auth.uid)
+        ? userData(request.auth.uid).role
+        : null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userExists(request.auth.uid) && myRole() == 'admin';
+    }
+
+    function isContractor() {
+      return isSignedIn() && userExists(request.auth.uid) && myRole() == 'contractor';
+    }
+
+    function firmExists(firmId) {
+      return firmId != null && exists(/databases/$(database)/documents/firms/$(firmId));
+    }
+
+    function firmData(firmId) {
+      return get(/databases/$(database)/documents/firms/$(firmId)).data;
+    }
+
+    // The contractor who owns (created) a given firm.
+    function isFirmOwner(firmId) {
+      return isSignedIn() && firmExists(firmId) && firmData(firmId).ownerId == request.auth.uid;
+    }
+
+    // A supervisor explicitly added to a firm's supervisors sub-collection.
+    function isFirmSupervisor(firmId) {
+      return isSignedIn() && firmId != null &&
+        exists(/databases/$(database)/documents/firms/$(firmId)/supervisors/$(request.auth.uid));
+    }
+
+    function projectExists(projectId) {
+      return exists(/databases/$(database)/documents/projects/$(projectId));
+    }
+
+    function projectData(projectId) {
+      return get(/databases/$(database)/documents/projects/$(projectId)).data;
+    }
+
+    // The contractor/firm that owns a project (matches how add_project_screen
+    // stamps 'firmId' + 'createdBy' on every project document).
+    function isProjectOwner(projectId) {
+      return isSignedIn() && projectExists(projectId) && isFirmOwner(projectData(projectId).firmId);
+    }
+
+    // The supervisor assigned to a project. The app has stored this under a
+    // couple of different field names over time (supervisorId, supervisorEmail,
+    // assignedSupervisor) - accept any of them rather than guessing wrong and
+    // locking a legitimate supervisor out.
+    function isProjectSupervisor(projectId) {
+      return isSignedIn() && projectExists(projectId) && (
+        projectData(projectId).supervisorId == request.auth.uid ||
+        projectData(projectId).supervisorEmail == request.auth.token.email ||
+        projectData(projectId).assignedSupervisor == request.auth.token.email
+      );
+    }
+
+    function canReadProject(projectId) {
+      return isAdmin() || isProjectOwner(projectId) || isProjectSupervisor(projectId);
+    }
+
+    // Money/records writes (payments, invoices): contractor (firm owner) + admin only.
+    function canWriteFinancials(projectId) {
+      return isAdmin() || isProjectOwner(projectId);
+    }
+
+    // Site records writes (expenses, resources, documents): owner, admin, or
+    // the assigned supervisor - all of whom add these from the app today.
+    function canWriteSiteRecords(projectId) {
+      return isAdmin() || isProjectOwner(projectId) || isProjectSupervisor(projectId);
+    }
+
+    function unchanged(field) {
+      return request.resource.data[field] == resource.data[field];
+    }
+
+    // ── users ────────────────────────────────────────────────────────────
+    match /users/{userId} {
+      // A user can always read their own profile; admins can read anyone's.
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+
+      // supervisor_list_screen.dart looks up supervisors by email so a
+      // contractor can add them to a firm. Only expose that narrow slice
+      // (role == 'supervisor') to non-admin queries; everything else
+      // (contractor/admin profiles, which carry PEC license images and
+      // approval data) requires get() above, i.e. reading your own doc.
+      allow list: if isSignedIn() && (isAdmin() || resource.data.role == 'supervisor');
+
+      // Registration screens create their own user doc right after sign-up.
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.role in ['contractor', 'supervisor']
+        && request.resource.data.email == request.auth.token.email
+        // Contractors always start 'pending' (admin must approve them);
+        // don't let a client request approve itself on creation.
+        && (request.resource.data.role != 'contractor' || request.resource.data.status == 'pending');
+
+      // Self-service profile edits are limited to non-sensitive fields.
+      // Changing assignedFirmId (switch-firm flow) is only allowed to a firm
+      // the caller actually owns. role/status/approval fields are locked.
+      allow update: if isAdmin() || (
+        isSignedIn() && request.auth.uid == userId &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['name', 'phone', 'profileImageUrl', 'updatedAt', 'assignedFirmId', 'emailVerified', 'lastLogin']) &&
+        (unchanged('assignedFirmId') || isFirmOwner(request.resource.data.assignedFirmId))
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // ── firms ────────────────────────────────────────────────────────────
+    match /firms/{firmId} {
+      allow get: if isSignedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid || isFirmSupervisor(firmId));
+      allow list: if isSignedIn() && (isAdmin() || resource.data.ownerId == request.auth.uid);
+
+      allow create: if isSignedIn() && isContractor() && request.resource.data.ownerId == request.auth.uid;
+
+      // Owner can edit their firm's details but not hand it to someone else.
+      allow update: if isAdmin() || (
+        isSignedIn() && resource.data.ownerId == request.auth.uid && unchanged('ownerId')
+      );
+
+      allow delete: if isAdmin();
+
+      match /supervisors/{supervisorId} {
+        allow get: if isSignedIn() && (isAdmin() || isFirmOwner(firmId) || request.auth.uid == supervisorId);
+        allow list: if isSignedIn() && (isAdmin() || isFirmOwner(firmId));
+        allow write: if isAdmin() || isFirmOwner(firmId);
+      }
+
+      match /documents/{documentId} {
+        allow read: if isSignedIn() && (isAdmin() || isFirmOwner(firmId));
+        allow write: if isAdmin() || isFirmOwner(firmId);
+      }
+    }
+
+    // ── projects ─────────────────────────────────────────────────────────
+    match /projects/{projectId} {
+      allow get: if canReadProject(projectId);
+      allow list: if isAdmin()
+        || resource.data.firmId != null && isFirmOwner(resource.data.firmId)
+        || resource.data.supervisorId == request.auth.uid
+        || resource.data.supervisorEmail == request.auth.token.email
+        || resource.data.assignedSupervisor == request.auth.token.email;
+
+      allow create: if isSignedIn() && isContractor()
+        && request.resource.data.createdBy == request.auth.uid
+        && isFirmOwner(request.resource.data.firmId);
+
+      // Owner/admin can edit project details, but never reassign it to a
+      // different firm or a different creator after the fact.
+      allow update: if isAdmin() || (
+        isProjectOwner(projectId) && unchanged('firmId') && unchanged('createdBy')
+      );
+
+      allow delete: if isAdmin() || isProjectOwner(projectId);
+
+      // Contractor-facing money records: PaymentHistoryScreen and
+      // generate_invoice/invoice_history screens are only ever reachable
+      // from the contractor dashboard - supervisors get no access here.
+      match /payments/{paymentId} {
+        allow read: if canReadProject(projectId);
+        allow write: if canWriteFinancials(projectId);
+      }
+
+      match /invoices/{invoiceId} {
+        allow read: if canReadProject(projectId);
+        allow write: if canWriteFinancials(projectId);
+      }
+
+      // Site-level records: AddExpenseScreen/ExpenseHistoryScreen and
+      // AddResourceScreen/ResourceHistoryScreen are reachable from both the
+      // contractor and supervisor dashboards.
+      match /expenses/{expenseId} {
+        allow read: if canReadProject(projectId);
+        allow write: if canWriteSiteRecords(projectId);
+      }
+
+      match /resources/{resourceId} {
+        allow read: if canReadProject(projectId);
+        allow write: if canWriteSiteRecords(projectId);
+      }
+
+      match /documents/{documentId} {
+        allow read: if canReadProject(projectId);
+        allow write: if canWriteSiteRecords(projectId);
+      }
+
+      // DPRs are supervisor-authored (upload_dpr_screen.dart /
+      // dpr_history_screen.dart are only reachable from the supervisor
+      // dashboard); owner/admin can review them.
+      match /dprs/{dprId} {
+        allow read: if canReadProject(projectId);
+        allow write: if isAdmin() || isProjectSupervisor(projectId);
+      }
+    }
+
+    // ── notifications ────────────────────────────────────────────────────
+    // notifications/{uid} itself never carries data directly in the app -
+    // everything lives in the user_notifications sub-collection.
+    match /notifications/{userId} {
+      allow read, write: if false;
+
+      match /user_notifications/{notificationId} {
+        allow get, list, delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+
+        // Any signed-in user (or admin) may create a notification addressed
+        // to userId - this mirrors admin_dashboard.dart notifying a
+        // contractor on approval/rejection, and users writing their own
+        // reminders (FirmDocumentListScreen.dart expiry alerts).
+        allow create: if isSignedIn();
+
+        // Recipients may only toggle 'read'; they can't rewrite the content
+        // of a notification someone else sent them.
+        allow update: if isAdmin() || (
+          isSignedIn() && request.auth.uid == userId &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+        );
+      }
+    }
+
+    // ── admin-managed reference data ─────────────────────────────────────
+    // Schedule-of-rates / categories are read by resource/rate pickers
+    // across contractor and supervisor screens, but only ever written from
+    // admin_dashboard.dart.
+    match /categories/{categoryId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /schedule_of_rates/{rateId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Deny everything else by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

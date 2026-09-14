@@ -1,0 +1,60 @@
+// TrackSitePro - Firebase Storage security rules
+//
+// IMPORTANT: validate against the Firebase Emulator Suite / Rules Playground
+// before deploying. There was previously no storage.rules file committed at
+// all, so uploads/downloads were relying on whatever default the bucket was
+// created with.
+//
+// Firebase Storage is used in exactly one place in the app today:
+// PaymentHistoryScreen.dart uploads/deletes payment receipt files at
+//   payments/{projectId}/{fileName}
+// (see FirebaseStorage.instance.ref().child('payments').child(projectId)...
+// and refFromURL(documentUrl).delete()). Registration / add-project image
+// pickers (contractor_registration_screen.dart, add_project_screen.dart)
+// store their images as base64 directly in Firestore documents, not in
+// Storage, so there is nothing else to scope here today.
+//
+// These rules cross-check Firestore (firestore.get) to scope a payment
+// receipt to the project's own firm owner, mirroring firestore.rules.
+// Cross-service Storage->Firestore rule evaluation requires the project to
+// be on the Blaze (pay-as-you-go) plan. If that is not the case for this
+// project, replace isProjectOwner()/isAdmin() below with a simpler
+// `isSignedIn()` check as a temporary fallback - less precise, but still
+// far better than no rules at all.
+
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userRole() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userRole() == 'admin';
+    }
+
+    function isProjectOwner(projectId) {
+      let project = firestore.get(/databases/(default)/documents/projects/$(projectId)).data;
+      let firm = firestore.get(/databases/(default)/documents/firms/$(project.firmId)).data;
+      return isSignedIn() && firm.ownerId == request.auth.uid;
+    }
+
+    match /payments/{projectId}/{fileName} {
+      allow read: if isSignedIn() && (isAdmin() || isProjectOwner(projectId));
+      allow write: if isSignedIn() && (isAdmin() || isProjectOwner(projectId))
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*|application/pdf');
+    }
+
+    // Deny everything else by default.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

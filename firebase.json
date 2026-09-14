@@ -1,1 +1,31 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"tracksiteproapp-d13a5","appId":"1:483386443225:android:8c435f8424d12edcc5c5c8","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"tracksiteproapp-d13a5","configurations":{"android":"1:483386443225:android:8c435f8424d12edcc5c5c8","ios":"1:483386443225:ios:c02bd72eceb34abac5c5c8","macos":"1:483386443225:ios:c02bd72eceb34abac5c5c8","web":"1:483386443225:web:1f25e37e0613d1c8c5c5c8","windows":"1:483386443225:web:57b195103573fc8bc5c5c8"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "tracksiteproapp-d13a5",
+          "appId": "1:483386443225:android:8c435f8424d12edcc5c5c8",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "tracksiteproapp-d13a5",
+          "configurations": {
+            "android": "1:483386443225:android:8c435f8424d12edcc5c5c8",
+            "ios": "1:483386443225:ios:c02bd72eceb34abac5c5c8",
+            "macos": "1:483386443225:ios:c02bd72eceb34abac5c5c8",
+            "web": "1:483386443225:web:1f25e37e0613d1c8c5c5c8",
+            "windows": "1:483386443225:web:57b195103573fc8bc5c5c8"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  }
+}
