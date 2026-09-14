@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import '../../services/payment_repository.dart';
 
 // ── Shared colour palette (mirrors ContractorDashboard) ──────────────────────
 class AppColors {
@@ -102,6 +102,7 @@ class PaymentHistoryScreen extends StatefulWidget {
 }
 
 class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
+  final _paymentRepo = PaymentRepository();
 
   // ── Delete ──────────────────────────────────────────────────────────────────
   Future<void> _deletePayment(String paymentId, String? documentUrl) async {
@@ -170,12 +171,10 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
     try {
       if (documentUrl != null && documentUrl.isNotEmpty) {
         try {
-          await FirebaseStorage.instance.refFromURL(documentUrl).delete();
+          await _paymentRepo.deleteReceiptFile(documentUrl);
         } catch (_) {}
       }
-      await FirebaseFirestore.instance
-          .collection('projects').doc(widget.projectId)
-          .collection('payments').doc(paymentId).delete();
+      await _paymentRepo.deletePayment(widget.projectId, paymentId);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -502,11 +501,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen> {
         ),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('projects').doc(widget.projectId)
-            .collection('payments')
-            .orderBy('createdAt', descending: true)
-            .snapshots(),
+        stream: _paymentRepo.streamPayments(widget.projectId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator(
@@ -601,6 +596,7 @@ class _AddEditPaymentSheet extends StatefulWidget {
 }
 
 class _AddEditPaymentSheetState extends State<_AddEditPaymentSheet> {
+  final _paymentRepo = PaymentRepository();
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
   final _certController = TextEditingController();
@@ -650,9 +646,7 @@ class _AddEditPaymentSheetState extends State<_AddEditPaymentSheet> {
 
   Future<void> _loadExistingPayments() async {
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('projects').doc(widget.projectId)
-          .collection('payments').get();
+      final snap = await _paymentRepo.fetchPayments(widget.projectId);
 
       final existing = snap.docs
           .where((d) => widget.paymentId == null || d.id != widget.paymentId)
@@ -697,12 +691,8 @@ class _AddEditPaymentSheetState extends State<_AddEditPaymentSheet> {
   Future<String?> _uploadDocument() async {
     if (_selectedFile == null) return _existingDocUrl;
     try {
-      final fileName =
-          '${DateTime.now().millisecondsSinceEpoch}_${_selectedFile!.path.split('/').last}';
-      final ref = FirebaseStorage.instance
-          .ref().child('payments').child(widget.projectId).child(fileName);
-      await ref.putFile(_selectedFile!);
-      return await ref.getDownloadURL();
+      return await _paymentRepo.uploadReceipt(
+          widget.projectId, _selectedFile!);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -730,15 +720,11 @@ class _AddEditPaymentSheetState extends State<_AddEditPaymentSheet> {
         'updatedAt': FieldValue.serverTimestamp(),
       };
 
-      final colRef = FirebaseFirestore.instance
-          .collection('projects').doc(widget.projectId)
-          .collection('payments');
-
       if (_isEditMode) {
-        await colRef.doc(widget.paymentId).update(payload);
+        await _paymentRepo.updatePayment(
+            widget.projectId, widget.paymentId!, payload);
       } else {
-        payload['createdAt'] = FieldValue.serverTimestamp();
-        await colRef.add(payload);
+        await _paymentRepo.addPayment(widget.projectId, payload);
       }
 
       if (mounted) {
