@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:track_site_pro_app/screens/auth/login_screen.dart';
 import 'package:track_site_pro_app/screens/profileManagementScreen/ProfileManagementScreen.dart';
 import 'package:track_site_pro_app/screens/supervisors/supervisor_list_screen.dart';
-import 'package:track_site_pro_app/screens/switch%20firm/switch_firm_screen.dart';
+import 'package:track_site_pro_app/screens/switch_firm/switch_firm_screen.dart';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 class AppColors {

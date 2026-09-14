@@ -10,7 +10,7 @@ import 'package:track_site_pro_app/screens/payments/PaymentHistoryScreen.dart';
 import 'package:track_site_pro_app/screens/projects/completed_projects_screen.dart';
 import 'package:track_site_pro_app/screens/projects/project_list_screen.dart';
 import 'package:track_site_pro_app/screens/settings/settings_screen.dart';
-import 'package:track_site_pro_app/screens/switch%20firm/switch_firm_screen.dart';
+import 'package:track_site_pro_app/screens/switch_firm/switch_firm_screen.dart';
 
 class AppColors {
   static const primaryBlue = Color(0xFF2563EB);
